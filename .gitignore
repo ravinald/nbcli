@@ -1,0 +1,26 @@
+# Binaries
+/bin/
+/dist/
+nbcli
+
+# Test/coverage
+*.out
+*.test
+coverage.html
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Local config / secrets — never commit Netbox tokens
+.env
+.envrc
+*.local.yaml
+config.local.*
+
+# Dev-only docs (per project policy)
+docs-internal/

@@ -1,0 +1,50 @@
+version: 2
+project_name: nbcli
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: nbcli
+    main: ./cmd/nbcli
+    binary: nbcli
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/ravinald/nbcli/internal/version.Version={{ .Version }}
+      - -X github.com/ravinald/nbcli/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/ravinald/nbcli/internal/version.Date={{ .Date }}
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: ["tar.gz"]
+    format_overrides:
+      - goos: windows
+        formats: ["zip"]
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - artifacts: archive
+
+snapshot:
+  version_template: "{{ .Tag }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
