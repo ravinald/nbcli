@@ -15,6 +15,15 @@ func newShowCmd(io IO) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newShowSitesCmd(io),
+		newShowRacksCmd(io),
+		newShowDevicesCmd(io),
+		newShowInterfacesCmd(io),
+		newShowPrefixesCmd(io),
+		newShowIPAddressesCmd(io),
+		newShowVLANsCmd(io),
+		newShowVRFsCmd(io),
+		newShowVMsCmd(io),
+		newShowClustersCmd(io),
 		newShowTenantsCmd(io),
 		newShowContactsCmd(io),
 	)
