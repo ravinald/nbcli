@@ -48,6 +48,8 @@ type Model struct {
 	views  map[string]views.View
 	active views.View
 
+	showHelp bool
+
 	width, height int
 	status        string
 }
@@ -82,7 +84,7 @@ func New(client *netbox.Client) Model {
 			"Virtual Machines": views.NewVMs(client),
 			"Clusters":         views.NewClusters(client),
 		},
-		status: "tab/⇧tab sidebar · ↑/↓ rows · enter detail · esc back · q quit",
+		status: "tab/⇧tab sidebar · ↑/↓ rows · enter detail · / search · ? help · q quit",
 	}
 	m.active = m.lookupView()
 	return m
@@ -121,17 +123,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "?":
+			m.showHelp = !m.showHelp
+			return m, nil
 		case "tab", "ctrl+n", "]":
+			if m.showHelp {
+				return m, nil
+			}
 			if m.flatIndex < len(m.flat)-1 {
 				m.flatIndex++
 				return m.swapActive()
 			}
 			return m, nil
 		case "shift+tab", "ctrl+p", "[":
+			if m.showHelp {
+				return m, nil
+			}
 			if m.flatIndex > 0 {
 				m.flatIndex--
 				return m.swapActive()
 			}
+			return m, nil
+		}
+		if m.showHelp {
+			// Swallow other keys while help is up.
 			return m, nil
 		}
 	}
@@ -156,15 +171,42 @@ func (m Model) swapActive() (tea.Model, tea.Cmd) {
 }
 
 // View renders the two-pane shell with the active view's body on the right.
+// When the help pane is up, it overlays the main pane.
 func (m Model) View() string {
 	if m.width == 0 {
 		return "loading..."
 	}
 	sidebar := m.renderSidebar()
-	main := m.renderMain()
+	var main string
+	if m.showHelp {
+		main = m.styles.Main.Render(m.styles.Title.Render("Help") + "\n\n" + helpText())
+	} else {
+		main = m.renderMain()
+	}
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, main)
 	status := m.styles.StatusBar.Render(m.status)
 	return lipgloss.JoinVertical(lipgloss.Left, body, status)
+}
+
+// helpText is the canonical keybind reference shown by `?`.
+func helpText() string {
+	return "Sidebar nav\n" +
+		"  Tab / Shift+Tab    next / previous section item\n" +
+		"  ] / [              same, alternate binding\n" +
+		"\n" +
+		"Table (active view)\n" +
+		"  ↑ / ↓ · k / j      move between rows\n" +
+		"  Enter              show detail of selected row\n" +
+		"  Esc                close detail, or clear filter\n" +
+		"\n" +
+		"Search\n" +
+		"  /                  open search input\n" +
+		"  Enter              commit (keep filter, exit input)\n" +
+		"  Esc                cancel (clear filter, exit input)\n" +
+		"\n" +
+		"Global\n" +
+		"  ?                  toggle this help\n" +
+		"  q / Ctrl+C         quit"
 }
 
 func (m Model) renderSidebar() string {

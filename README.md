@@ -102,11 +102,15 @@ The response is rendered as JSON (or YAML if you pass `--format yaml`). `--metho
 |---|---|
 | `Tab` / `Shift-Tab` (or `]` / `[`) | Move between sidebar items |
 | `↑` / `↓` / `k` / `j` | Move between rows in the active table |
-| `Enter` | Show detail of the selected row |
-| `Esc` | Close detail view |
+| `Enter` | Show detail of the selected row (in list); commit filter (in search) |
+| `Esc` | Close detail · cancel/clear filter |
+| `/` | Open the search input (substring match across all visible columns) |
+| `?` | Toggle the help overlay |
 | `q` / `Ctrl-C` | Quit |
 
-Detail view is reflection-based: every non-zero field of the selected resource is printed as `key: value`. `NestedRef` foreign keys collapse to `Name (#id)`; `LabelValue` enums render as their label.
+**Detail view** is reflection-based: every non-zero field of the selected resource is printed as `key: value`. `NestedRef` foreign keys collapse to `Name (#id)`; `LabelValue` enums render as their label.
+
+**Search** filters the active table client-side as you type. Commit with `Enter` to keep the filter visible (and exit the input); cancel with `Esc` to restore all rows. While a committed filter is active, the status line shows `filter "foo" · 12/247 rows`; pressing `Esc` from the list clears it.
 
 ## Shell completion
 
