@@ -47,10 +47,10 @@ const (
 	RightViewport
 )
 
-// sidebarWidth is the total horizontal cells the left viewport consumes,
-// including padding and right border. Used to compute the right viewport's
-// pane width when forwarding tea.WindowSizeMsg.
-const sidebarWidth = 26
+// leftPaneTotalWidth is the total horizontal cells the left viewport consumes
+// (content + border + padding). Tuned so "Virtual Machines" + cursor fits
+// without truncation.
+const leftPaneTotalWidth = 26
 
 // Model is the root bubbletea model. It owns the sidebar selection and routes
 // keyboard input / async messages to the currently active resource view.
@@ -210,21 +210,23 @@ func (m Model) updateLeftViewport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// resizeChildren tells the active view how much terminal area it owns.
-// Fires on every tea.WindowSizeMsg so resize ripples through.
+// resizeChildren forwards the right viewport's content dimensions to the
+// active view. Fires on every tea.WindowSizeMsg so resize ripples through.
 func (m Model) resizeChildren() (tea.Model, tea.Cmd) {
 	if m.active == nil {
 		return m, nil
 	}
-	paneW := m.width - sidebarWidth
-	paneH := m.height - 1 // status bar
-	if paneW < 20 {
-		paneW = 20
+	frameW, frameH := PaneStyle(false).GetFrameSize()
+	rightTotalW := m.width - leftPaneTotalWidth
+	rightContentW := rightTotalW - frameW
+	rightContentH := (m.height - 1) - frameH // -1 for the status bar line
+	if rightContentW < 20 {
+		rightContentW = 20
 	}
-	if paneH < 8 {
-		paneH = 8
+	if rightContentH < 5 {
+		rightContentH = 5
 	}
-	next, cmd := m.active.Update(views.SizeMsg{Width: paneW, Height: paneH})
+	next, cmd := m.active.Update(views.SizeMsg{Width: rightContentW, Height: rightContentH})
 	if v, ok := next.(views.View); ok {
 		m.active = v
 	}
@@ -266,20 +268,34 @@ func (m Model) navigateTo(viewName string, id int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the two-pane shell with the active view's body on the right.
-// When the help pane is up, it overlays the main pane.
+// View renders the two-viewport shell. Each viewport is wrapped in a bordered
+// box (white when focused, grey when not), sized to fill the terminal.
 func (m Model) View() string {
 	if m.width == 0 {
 		return "loading..."
 	}
-	sidebar := m.renderSidebar()
-	var main string
+	frameW, frameH := PaneStyle(false).GetFrameSize()
+	leftContentW := leftPaneTotalWidth - frameW
+	rightContentW := m.width - leftPaneTotalWidth - frameW
+	contentH := (m.height - 1) - frameH // status bar at the bottom
+
+	leftPane := PaneStyle(m.focused == LeftViewport).
+		Width(leftContentW).
+		Height(contentH).
+		Render(m.renderSidebar())
+
+	var rightContent string
 	if m.showHelp {
-		main = m.styles.Main.Render(m.styles.Title.Render("Help") + "\n\n" + helpText())
+		rightContent = m.styles.Title.Render("Help") + "\n\n" + helpText()
 	} else {
-		main = m.renderMain()
+		rightContent = m.renderMain()
 	}
-	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, main)
+	rightPane := PaneStyle(m.focused == RightViewport).
+		Width(rightContentW).
+		Height(contentH).
+		Render(rightContent)
+
+	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 	status := m.styles.StatusBar.Render(m.statusLine())
 	return lipgloss.JoinVertical(lipgloss.Left, body, status)
 }
@@ -324,6 +340,8 @@ func helpText() string {
 		"  q / Ctrl+C         quit"
 }
 
+// renderSidebar builds the sidebar content. PaneStyle wraps it with a border
+// at View() time so styling stays in one place.
 func (m Model) renderSidebar() string {
 	var b strings.Builder
 	cursor := 0
@@ -345,17 +363,17 @@ func (m Model) renderSidebar() string {
 			b.WriteString("\n")
 		}
 	}
-	return m.styles.Sidebar.Render(b.String())
+	return b.String()
 }
 
+// renderMain builds the right viewport content. PaneStyle wraps it at View() time.
 func (m Model) renderMain() string {
 	if m.active != nil {
-		return m.styles.Main.Render(m.active.View())
+		return m.active.View()
 	}
 	name := m.currentItem()
-	placeholder := m.styles.Title.Render(name) + "\n\n" +
+	return m.styles.Title.Render(name) + "\n\n" +
 		"(view not yet implemented in v0.1)\n\nTarget: " + m.client.BaseURL()
-	return m.styles.Main.Render(placeholder)
 }
 
 // Run starts the bubbletea program until quit. Called from `nbcli tui`.

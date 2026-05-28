@@ -124,12 +124,17 @@ func (b *baseView[T]) Focus() tea.Cmd {
 func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m := msg.(type) {
 	case SizeMsg:
-		// Reserve vertical chrome: title line, blank, table border, hint line.
-		h := m.Height - 6
+		// Vertical chrome: title line + blank + table header + table border + hint line.
+		h := m.Height - 5
 		if h < 5 {
 			h = 5
 		}
 		b.table.SetHeight(h)
+		// Let the table know its render width so it can clip cleanly when
+		// the terminal is narrower than the sum of column widths.
+		if m.Width > 4 {
+			b.table.SetWidth(m.Width)
+		}
 		return b, nil
 	case loadedMsg[T]:
 		b.loading = false
