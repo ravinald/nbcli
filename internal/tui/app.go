@@ -112,13 +112,15 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-// Update routes keyboard navigation, then forwards every other message
-// (including async data-load results) to the active view.
+// Update routes keyboard navigation, FK-nav messages from views, and async
+// data-load results to the active view.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+	case views.NavMsg:
+		return m.navigateTo(msg.ViewName, msg.ID)
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -170,6 +172,31 @@ func (m Model) swapActive() (tea.Model, tea.Cmd) {
 	return m, m.active.Focus()
 }
 
+// navigateTo switches the sidebar selection and active view to the named
+// view, then asks the target (if it supports it) to open detail for id.
+// Used by FK-navigation: pressing a digit in detail mode emits a
+// views.NavMsg that lands here.
+func (m Model) navigateTo(viewName string, id int) (tea.Model, tea.Cmd) {
+	for i, fe := range m.flat {
+		if m.sections[fe.section].Items[fe.item] != viewName {
+			continue
+		}
+		m.flatIndex = i
+		m.active = m.views[viewName]
+		if m.active == nil {
+			return m, nil
+		}
+		cmds := []tea.Cmd{m.active.Focus()}
+		if opener, ok := m.active.(interface{ OpenDetailByID(int) tea.Cmd }); ok {
+			if c := opener.OpenDetailByID(id); c != nil {
+				cmds = append(cmds, c)
+			}
+		}
+		return m, tea.Batch(cmds...)
+	}
+	return m, nil
+}
+
 // View renders the two-pane shell with the active view's body on the right.
 // When the help pane is up, it overlays the main pane.
 func (m Model) View() string {
@@ -198,6 +225,10 @@ func helpText() string {
 		"  ↑ / ↓ · k / j      move between rows\n" +
 		"  Enter              show detail of selected row\n" +
 		"  Esc                close detail, or clear filter\n" +
+		"\n" +
+		"Detail view\n" +
+		"  1 - 9              follow the FK marked [N] (jump to that resource)\n" +
+		"  Esc                back to list\n" +
 		"\n" +
 		"Search\n" +
 		"  /                  open search input\n" +

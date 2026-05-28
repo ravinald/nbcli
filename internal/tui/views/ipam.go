@@ -37,7 +37,7 @@ func NewPrefixes(client *netbox.Client) View {
 			client.PrefixesFetcher(netbox.ListPrefixesOptions{}),
 			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
 	}
-	return newBaseView[netbox.Prefix]("Prefixes", cols, mapper, fetcher)
+	return newBaseView[netbox.Prefix]("Prefixes", cols, mapper, func(p netbox.Prefix) int { return p.ID }, fetcher)
 }
 
 // NewIPAddresses returns a View listing /ipam/ip-addresses/.
@@ -65,7 +65,7 @@ func NewIPAddresses(client *netbox.Client) View {
 			client.IPAddressesFetcher(netbox.ListIPAddressesOptions{}),
 			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
 	}
-	return newBaseView[netbox.IPAddress]("IP Addresses", cols, mapper, fetcher)
+	return newBaseView[netbox.IPAddress]("IP Addresses", cols, mapper, func(i netbox.IPAddress) int { return i.ID }, fetcher)
 }
 
 // NewVLANs returns a View listing /ipam/vlans/.
@@ -95,7 +95,7 @@ func NewVLANs(client *netbox.Client) View {
 			client.VLANsFetcher(netbox.ListVLANsOptions{}),
 			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
 	}
-	return newBaseView[netbox.VLAN]("VLANs", cols, mapper, fetcher)
+	return newBaseView[netbox.VLAN]("VLANs", cols, mapper, func(v netbox.VLAN) int { return v.ID }, fetcher)
 }
 
 // NewVRFs returns a View listing /ipam/vrfs/.
@@ -121,5 +121,5 @@ func NewVRFs(client *netbox.Client) View {
 			client.VRFsFetcher(netbox.ListVRFsOptions{}),
 			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
 	}
-	return newBaseView[netbox.VRF]("VRFs", cols, mapper, fetcher)
+	return newBaseView[netbox.VRF]("VRFs", cols, mapper, func(v netbox.VRF) int { return v.ID }, fetcher)
 }

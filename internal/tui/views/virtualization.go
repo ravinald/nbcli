@@ -47,7 +47,7 @@ func NewVMs(client *netbox.Client) View {
 			client.VMsFetcher(netbox.ListVMsOptions{}),
 			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
 	}
-	return newBaseView[netbox.VirtualMachine]("Virtual Machines", cols, mapper, fetcher)
+	return newBaseView[netbox.VirtualMachine]("Virtual Machines", cols, mapper, func(v netbox.VirtualMachine) int { return v.ID }, fetcher)
 }
 
 // NewClusters returns a View listing /virtualization/clusters/.
@@ -77,5 +77,5 @@ func NewClusters(client *netbox.Client) View {
 			client.ClustersFetcher(netbox.ListClustersOptions{}),
 			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
 	}
-	return newBaseView[netbox.Cluster]("Clusters", cols, mapper, fetcher)
+	return newBaseView[netbox.Cluster]("Clusters", cols, mapper, func(c netbox.Cluster) int { return c.ID }, fetcher)
 }

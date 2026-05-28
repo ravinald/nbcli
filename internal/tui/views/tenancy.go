@@ -34,7 +34,7 @@ func NewTenants(client *netbox.Client) View {
 			client.TenantsFetcher(netbox.ListTenantsOptions{}),
 			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
 	}
-	return newBaseView[netbox.Tenant]("Tenants", cols, mapper, fetcher)
+	return newBaseView[netbox.Tenant]("Tenants", cols, mapper, func(t netbox.Tenant) int { return t.ID }, fetcher)
 }
 
 // NewContacts returns a View listing /tenancy/contacts/.
@@ -60,5 +60,5 @@ func NewContacts(client *netbox.Client) View {
 			client.ContactsFetcher(netbox.ListContactsOptions{}),
 			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
 	}
-	return newBaseView[netbox.Contact]("Contacts", cols, mapper, fetcher)
+	return newBaseView[netbox.Contact]("Contacts", cols, mapper, func(c netbox.Contact) int { return c.ID }, fetcher)
 }

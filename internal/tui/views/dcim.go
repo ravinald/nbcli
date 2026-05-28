@@ -40,7 +40,7 @@ func NewRacks(client *netbox.Client) View {
 			client.RacksFetcher(netbox.ListRacksOptions{}),
 			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
 	}
-	return newBaseView[netbox.Rack]("Racks", cols, mapper, fetcher)
+	return newBaseView[netbox.Rack]("Racks", cols, mapper, func(r netbox.Rack) int { return r.ID }, fetcher)
 }
 
 // NewDevices returns a View listing /dcim/devices/.
@@ -75,7 +75,7 @@ func NewDevices(client *netbox.Client) View {
 			client.DevicesFetcher(netbox.ListDevicesOptions{}),
 			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
 	}
-	return newBaseView[netbox.Device]("Devices", cols, mapper, fetcher)
+	return newBaseView[netbox.Device]("Devices", cols, mapper, func(d netbox.Device) int { return d.ID }, fetcher)
 }
 
 // NewInterfaces returns a View listing /dcim/interfaces/. Capped at 2000 rows
@@ -105,5 +105,5 @@ func NewInterfaces(client *netbox.Client) View {
 			client.InterfacesFetcher(netbox.ListInterfacesOptions{}),
 			netbox.IterateOptions{PageSize: 100, MaxPages: 20})
 	}
-	return newBaseView[netbox.Interface]("Interfaces", cols, mapper, fetcher)
+	return newBaseView[netbox.Interface]("Interfaces", cols, mapper, func(i netbox.Interface) int { return i.ID }, fetcher)
 }
