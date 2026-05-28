@@ -109,13 +109,21 @@ func New(opts Options) (*Client, error) {
 	}, nil
 }
 
+// V2Prefix is the wire-format prefix every v2 Netbox token carries
+// ("nbt_KEY.TOKEN"). authHeaderFor auto-prepends it when missing so users
+// who store the bare KEY in their env file don't have to remember to add it.
+const V2Prefix = "nbt_"
+
 // authHeaderFor builds the Authorization header value for the given scheme.
-// Empty scheme defaults to v2; comparison is case-insensitive. Unknown values
-// error rather than silently falling through, since a typo here just produces
-// 403s at runtime.
+// Empty scheme defaults to v2; comparison is case-insensitive. v2 tokens
+// require an "nbt_" prefix; if the supplied token doesn't have one, we add
+// it. Unknown scheme values error rather than silently falling through.
 func authHeaderFor(scheme AuthScheme, token string) (string, error) {
 	switch AuthScheme(strings.ToLower(string(scheme))) {
 	case "", AuthSchemeV2:
+		if !strings.HasPrefix(token, V2Prefix) {
+			token = V2Prefix + token
+		}
 		return "Bearer " + token, nil
 	case AuthSchemeV1:
 		return "Token " + token, nil

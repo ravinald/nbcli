@@ -97,6 +97,24 @@ func TestAuthHeader_V1AndV2(t *testing.T) {
 	}
 }
 
+func TestAuthHeader_V2AutoPrependsNbtPrefix(t *testing.T) {
+	t.Parallel()
+	// Bare KEY.TOKEN (no nbt_ prefix) → client adds it for v2.
+	c, err := New(Options{BaseURL: "https://x", Token: "K.T", AuthScheme: AuthSchemeV2})
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer nbt_K.T", c.authHeader)
+
+	// Already prefixed → left alone (no double prefix).
+	c, err = New(Options{BaseURL: "https://x", Token: "nbt_K.T", AuthScheme: AuthSchemeV2})
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer nbt_K.T", c.authHeader)
+
+	// v1 is untouched even when the token happens to lack nbt_.
+	c, err = New(Options{BaseURL: "https://x", Token: "raw40hex", AuthScheme: AuthSchemeV1})
+	require.NoError(t, err)
+	assert.Equal(t, "Token raw40hex", c.authHeader)
+}
+
 func TestAuthHeader_UnknownSchemeRejected(t *testing.T) {
 	t.Parallel()
 	_, err := New(Options{BaseURL: "https://x", Token: "t", AuthScheme: "v9"})
