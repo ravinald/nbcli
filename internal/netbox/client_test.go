@@ -28,7 +28,8 @@ func TestListSites_HappyPath(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/dcim/sites/", r.URL.Path)
-		assert.Equal(t, "Token nbt_KEY.TOKEN", r.Header.Get("Authorization"))
+		assert.Equal(t, "Bearer nbt_KEY.TOKEN", r.Header.Get("Authorization"),
+			"default scheme is v2 → Bearer")
 		assert.Equal(t, "active", r.URL.Query().Get("status"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(Page[Site]{
@@ -64,6 +65,43 @@ func TestListSites_PropagatesAPIError(t *testing.T) {
 	var apiErr *APIError
 	require.True(t, errors.As(err, &apiErr), "should be *APIError, got %T", err)
 	assert.Equal(t, http.StatusForbidden, apiErr.StatusCode)
+}
+
+func TestAuthHeader_V1AndV2(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		scheme AuthScheme
+		want   string
+	}{
+		{"default is v2 bearer", "", "Bearer nbt_K.T"},
+		{"explicit v2", AuthSchemeV2, "Bearer nbt_K.T"},
+		{"explicit v1", AuthSchemeV1, "Token nbt_K.T"},
+		{"mixed case ok", "V1", "Token nbt_K.T"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = r.Header.Get("Authorization")
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{}`))
+			}))
+			defer srv.Close()
+
+			c, err := New(Options{BaseURL: srv.URL, Token: "nbt_K.T", AuthScheme: tc.scheme})
+			require.NoError(t, err)
+			require.NoError(t, c.Do(context.Background(), "GET", "/api/", nil, nil, nil))
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestAuthHeader_UnknownSchemeRejected(t *testing.T) {
+	t.Parallel()
+	_, err := New(Options{BaseURL: "https://x", Token: "t", AuthScheme: "v9"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown AuthScheme")
 }
 
 func TestDo_RespectsContextCancel(t *testing.T) {

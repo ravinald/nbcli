@@ -91,7 +91,19 @@ url: https://netbox.example.com
 format: table          # implicit default is table on a TTY, json when piped
 timeout_seconds: 30
 insecure_skip_verify: false
+auth_scheme: v2        # v2 (default, Bearer header) or v1 (legacy, Token header)
 ```
+
+### Token auth scheme (v1 vs v2)
+
+Netbox supports two [token authorization styles](https://netboxlabs.com/docs/netbox/integrations/rest-api/#v1-and-v2-tokens):
+
+| Scheme | Header sent | When |
+|---|---|---|
+| `v2` (default) | `Authorization: Bearer nbt_KEY.TOKEN` | Tokens created with v2 hashing (recommended) |
+| `v1` | `Authorization: Token <token>` | Legacy plaintext-stored tokens |
+
+Override per-call with `--auth-scheme v1`, in config with `auth_scheme: v1`, or in env via `NBCLI_AUTH_SCHEME=v1`. A 403 with `{"detail":"Invalid v1 token"}` means your Netbox needs v2 and the client is sending v1.
 
 The token is intentionally **not** read from the config file — env only.
 

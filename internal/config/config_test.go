@@ -35,6 +35,18 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.False(t, cfg.InsecureSkipVerify)
 	assert.Empty(t, cfg.URL)
 	assert.Empty(t, cfg.Token)
+	assert.Equal(t, "v2", cfg.AuthScheme, "v2 is the default")
+}
+
+func TestLoad_AuthSchemeFromFile(t *testing.T) {
+	isolateEnv(t)
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(cfgPath,
+		[]byte("url: https://x\nauth_scheme: v1\n"), 0o600))
+	cfg, err := Load(nil, cfgPath, "")
+	require.NoError(t, err)
+	assert.Equal(t, "v1", cfg.AuthScheme)
 }
 
 func TestLoad_EnvOverridesDefault(t *testing.T) {

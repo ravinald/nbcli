@@ -46,6 +46,7 @@ type rootOptions struct {
 	envFile    string
 	url        string
 	format     string
+	authScheme string
 	timeout    time.Duration
 	insecure   bool
 	verbose    bool
@@ -71,6 +72,7 @@ func NewRootCmd(io IO) *cobra.Command {
 	root.PersistentFlags().StringVar(&opts.format, "format", "", "output format: table|json|yaml|tsv (env NBCLI_FORMAT)")
 	root.PersistentFlags().DurationVar(&opts.timeout, "timeout", 0, "HTTP request timeout (e.g. 10s)")
 	root.PersistentFlags().BoolVar(&opts.insecure, "insecure", false, "skip TLS cert verification (dangerous; dev only)")
+	root.PersistentFlags().StringVar(&opts.authScheme, "auth-scheme", "", "Netbox token auth: v2 (default, Bearer) or v1 (legacy, Token)")
 	root.PersistentFlags().BoolVarP(&opts.verbose, "verbose", "v", false, "verbose logging to stderr")
 
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
@@ -137,6 +139,7 @@ func clientFromCtx(cmd *cobra.Command) (*netbox.Client, error) {
 	c, err := netbox.New(netbox.Options{
 		BaseURL:            cfg.URL,
 		Token:              cfg.Token,
+		AuthScheme:         netbox.AuthScheme(cfg.AuthScheme),
 		Timeout:            time.Duration(cfg.TimeoutSeconds) * time.Second,
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 	})

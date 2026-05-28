@@ -24,10 +24,26 @@ import (
 // UserAgent is sent on every request. Useful for Netbox access logs.
 const UserAgent = "nbcli/dev (+https://github.com/ravinald/nbcli)"
 
+// AuthScheme names a Netbox token authorization style.
+//
+//   - AuthSchemeV2 sends "Authorization: Bearer nbt_KEY.TOKEN" — preferred,
+//     used by Netbox tokens created with the v2 hashing scheme.
+//   - AuthSchemeV1 sends "Authorization: Token <token>" — legacy, for
+//     deployments that still use plaintext-stored tokens.
+//
+// Default is v2. Override with config `auth_scheme: v1` or `--auth-scheme v1`.
+type AuthScheme string
+
+// Supported auth scheme values. Compared case-insensitively in New().
+const (
+	AuthSchemeV1 AuthScheme = "v1"
+	AuthSchemeV2 AuthScheme = "v2"
+)
+
 // Client is a thread-safe Netbox API client.
 type Client struct {
 	baseURL    *url.URL
-	token      string
+	authHeader string // pre-built "Bearer <tok>" or "Token <tok>"
 	httpClient *http.Client
 }
 
@@ -37,8 +53,11 @@ type Options struct {
 	// Trailing slash is fine; the client normalizes it.
 	BaseURL string
 
-	// Token is the Netbox API token ("nbt_KEY.TOKEN").
+	// Token is the Netbox API token ("nbt_KEY.TOKEN" for v2; raw token for v1).
 	Token string
+
+	// AuthScheme selects the Authorization header style. Empty defaults to v2.
+	AuthScheme AuthScheme
 
 	// Timeout caps a single request including body read. Zero = 30s default.
 	Timeout time.Duration
@@ -75,14 +94,35 @@ func New(opts Options) (*Client, error) {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in
 	}
 
+	authHeader, err := authHeaderFor(opts.AuthScheme, opts.Token)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Client{
-		baseURL: u,
-		token:   opts.Token,
+		baseURL:    u,
+		authHeader: authHeader,
 		httpClient: &http.Client{
 			Timeout:   timeout,
 			Transport: transport,
 		},
 	}, nil
+}
+
+// authHeaderFor builds the Authorization header value for the given scheme.
+// Empty scheme defaults to v2; comparison is case-insensitive. Unknown values
+// error rather than silently falling through, since a typo here just produces
+// 403s at runtime.
+func authHeaderFor(scheme AuthScheme, token string) (string, error) {
+	switch AuthScheme(strings.ToLower(string(scheme))) {
+	case "", AuthSchemeV2:
+		return "Bearer " + token, nil
+	case AuthSchemeV1:
+		return "Token " + token, nil
+	default:
+		return "", fmt.Errorf("netbox: unknown AuthScheme %q (want %q or %q)",
+			scheme, AuthSchemeV1, AuthSchemeV2)
+	}
 }
 
 // BaseURL returns the configured root URL. Useful for diagnostics and for
@@ -134,7 +174,7 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 	if err != nil {
 		return fmt.Errorf("netbox: build request: %w", err)
 	}
-	req.Header.Set("Authorization", "Token "+c.token)
+	req.Header.Set("Authorization", c.authHeader)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", UserAgent)
 	if reqBody != nil {

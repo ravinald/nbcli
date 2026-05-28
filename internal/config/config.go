@@ -64,6 +64,12 @@ type Config struct {
 	// InsecureSkipVerify disables TLS cert verification. Off by default.
 	InsecureSkipVerify bool `mapstructure:"insecure_skip_verify" yaml:"insecure_skip_verify,omitempty"`
 
+	// AuthScheme selects the Netbox token Authorization style.
+	//   "v2" (default) → "Authorization: Bearer nbt_KEY.TOKEN"
+	//   "v1"           → "Authorization: Token <token>"   (legacy)
+	// Netbox docs: https://netboxlabs.com/docs/netbox/integrations/rest-api/#v1-and-v2-tokens
+	AuthScheme string `mapstructure:"auth_scheme" yaml:"auth_scheme,omitempty"`
+
 	// ConfigFile is the resolved path of the config file that was loaded
 	// (empty if none was found).
 	ConfigFile string `mapstructure:"-" yaml:"-"`
@@ -79,6 +85,7 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		TimeoutSeconds: 30,
+		AuthScheme:     "v2",
 	}
 }
 
@@ -249,6 +256,7 @@ func defaultsMap() map[string]any {
 		"format":               d.Format,
 		"timeout_seconds":      d.TimeoutSeconds,
 		"insecure_skip_verify": d.InsecureSkipVerify,
+		"auth_scheme":          d.AuthScheme,
 	}
 }
 
