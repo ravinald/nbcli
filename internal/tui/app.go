@@ -33,6 +33,16 @@ type flatEntry struct {
 	item    int
 }
 
+// Pane identifies which UI region owns the keyboard. Arrow keys, Enter, and
+// most other input route to the focused pane.
+type Pane int
+
+// Pane values.
+const (
+	PaneSidebar Pane = iota
+	PaneView
+)
+
 // Model is the root bubbletea model. It owns the sidebar selection and routes
 // keyboard input / async messages to the currently active resource view.
 type Model struct {
@@ -48,10 +58,12 @@ type Model struct {
 	views  map[string]views.View
 	active views.View
 
+	// pane is the currently-focused region (sidebar or active view).
+	pane Pane
+
 	showHelp bool
 
 	width, height int
-	status        string
 }
 
 // New constructs the root model with the given Netbox client.
@@ -84,7 +96,7 @@ func New(client *netbox.Client) Model {
 			"Virtual Machines": views.NewVMs(client),
 			"Clusters":         views.NewClusters(client),
 		},
-		status: "tab/⇧tab sidebar · ↑/↓ rows · enter detail · / search · ? help · q quit",
+		pane: PaneSidebar,
 	}
 	m.active = m.lookupView()
 	return m
@@ -113,44 +125,36 @@ func (m Model) Init() tea.Cmd {
 }
 
 // Update routes keyboard navigation, FK-nav messages from views, and async
-// data-load results to the active view.
+// data-load results. Key routing is focus-aware: when the sidebar is active,
+// arrow keys move section items; when a view is active, they reach the
+// view's table widget.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 	case views.NavMsg:
+		m.pane = PaneView
 		return m.navigateTo(msg.ViewName, msg.ID)
+	case views.EscapeUpMsg:
+		m.pane = PaneSidebar
+		return m, nil
 	case tea.KeyMsg:
+		// Global keys, regardless of pane focus.
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "?":
 			m.showHelp = !m.showHelp
 			return m, nil
-		case "tab", "ctrl+n", "]":
-			if m.showHelp {
-				return m, nil
-			}
-			if m.flatIndex < len(m.flat)-1 {
-				m.flatIndex++
-				return m.swapActive()
-			}
-			return m, nil
-		case "shift+tab", "ctrl+p", "[":
-			if m.showHelp {
-				return m, nil
-			}
-			if m.flatIndex > 0 {
-				m.flatIndex--
-				return m.swapActive()
-			}
-			return m, nil
 		}
 		if m.showHelp {
-			// Swallow other keys while help is up.
 			return m, nil
 		}
+		if m.pane == PaneSidebar {
+			return m.updateSidebar(msg)
+		}
+		// PaneView: fall through to the forward-to-active block below.
 	}
 	if m.active != nil {
 		next, cmd := m.active.Update(msg)
@@ -158,6 +162,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.active = v
 		}
 		return m, cmd
+	}
+	return m, nil
+}
+
+// updateSidebar handles keys while the sidebar holds focus.
+func (m Model) updateSidebar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		if m.flatIndex > 0 {
+			m.flatIndex--
+			return m.swapActive()
+		}
+	case "down", "j":
+		if m.flatIndex < len(m.flat)-1 {
+			m.flatIndex++
+			return m.swapActive()
+		}
+	case "tab", "ctrl+n", "]":
+		if m.flatIndex < len(m.flat)-1 {
+			m.flatIndex++
+			return m.swapActive()
+		}
+	case "shift+tab", "ctrl+p", "[":
+		if m.flatIndex > 0 {
+			m.flatIndex--
+			return m.swapActive()
+		}
+	case "enter", "right", "l":
+		// Hand keyboard focus to the active view.
+		m.pane = PaneView
+		if m.active != nil {
+			return m, m.active.Focus()
+		}
 	}
 	return m, nil
 }
@@ -211,28 +248,40 @@ func (m Model) View() string {
 		main = m.renderMain()
 	}
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, main)
-	status := m.styles.StatusBar.Render(m.status)
+	status := m.styles.StatusBar.Render(m.statusLine())
 	return lipgloss.JoinVertical(lipgloss.Left, body, status)
+}
+
+// statusLine builds the bottom hint based on which pane has focus.
+func (m Model) statusLine() string {
+	if m.showHelp {
+		return "? close help · q quit"
+	}
+	if m.pane == PaneSidebar {
+		return "↑/↓ section · → / enter focus view · ? help · q quit"
+	}
+	return "↑/↓ rows · enter detail · / search · esc back to sidebar · ? help · q quit"
 }
 
 // helpText is the canonical keybind reference shown by `?`.
 func helpText() string {
-	return "Sidebar nav\n" +
-		"  Tab / Shift+Tab    next / previous section item\n" +
-		"  ] / [              same, alternate binding\n" +
+	return "Sidebar (focus by default)\n" +
+		"  ↑ / ↓ · k / j      next / previous section item\n" +
+		"  Tab / Shift+Tab    same; ] / [ are aliases\n" +
+		"  Enter / → / l      focus into the active view\n" +
 		"\n" +
-		"Table (active view)\n" +
-		"  ↑ / ↓ · k / j      move between rows\n" +
+		"View (when focused)\n" +
+		"  ↑ / ↓ · k / j      move between table rows\n" +
 		"  Enter              show detail of selected row\n" +
-		"  Esc                close detail, or clear filter\n" +
+		"  /                  open search input\n" +
+		"  Esc                close detail, clear filter, or return to sidebar\n" +
 		"\n" +
 		"Detail view\n" +
 		"  1 - 9              follow the FK marked [N] (jump to that resource)\n" +
 		"  Esc                back to list\n" +
 		"\n" +
 		"Search\n" +
-		"  /                  open search input\n" +
-		"  Enter              commit (keep filter, exit input)\n" +
+		"  Enter              commit filter (keep visible, exit input)\n" +
 		"  Esc                cancel (clear filter, exit input)\n" +
 		"\n" +
 		"Global\n" +

@@ -49,6 +49,11 @@ type NavMsg struct {
 	ID       int
 }
 
+// EscapeUpMsg is emitted by a view when Esc was pressed but the view had
+// nothing internal to dismiss (no detail open, no search active, no committed
+// filter). The shell uses this to return keyboard focus to the sidebar.
+type EscapeUpMsg struct{}
+
 // FKRef is a parsed foreign-key reference. Built by DetailFKs when scanning
 // a struct's fields. Detail mode uses the slice index + 1 as the user-facing
 // digit key.

@@ -195,6 +195,8 @@ func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				b.applyFilter()
 				return b, nil
 			}
+			// Nothing internal to dismiss → bubble up so the shell can de-focus.
+			return b, func() tea.Msg { return EscapeUpMsg{} }
 		case "/":
 			if !b.inDetail && b.loaded {
 				b.searching = true
