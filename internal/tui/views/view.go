@@ -69,6 +69,15 @@ func ErrorBlock(err error) string {
 // Hint renders muted help text (keybind hints, "first fetch can take...", etc.).
 func Hint(s string) string { return hintStyle.Render(s) }
 
+// nestedName returns the Name of a NestedRef, "" if nil. Used pervasively by
+// row mappers to flatten foreign-key references into table cells.
+func nestedName(n *netbox.NestedRef) string {
+	if n == nil {
+		return ""
+	}
+	return n.Name
+}
+
 // RenderDetail returns a key/value rendering of v (any struct) using reflection.
 // Non-zero fields only. NestedRef collapses to "Name (#id)"; LabelValue to its
 // Label. Pointer fields are deref'd. Used by every view's detail pane so we
