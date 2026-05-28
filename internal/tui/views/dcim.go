@@ -13,6 +13,34 @@ import (
 	"github.com/ravinald/nbcli/internal/netbox"
 )
 
+// NewSites returns a View listing /dcim/sites/.
+func NewSites(client *netbox.Client) View {
+	cols := []table.Column{
+		{Title: "ID", Width: 6},
+		{Title: "Name", Width: 22},
+		{Title: "Slug", Width: 22},
+		{Title: "Status", Width: 12},
+		{Title: "Region", Width: 16},
+		{Title: "Tenant", Width: 16},
+	}
+	mapper := func(s netbox.Site) table.Row {
+		return table.Row{
+			strconv.Itoa(s.ID),
+			s.Name,
+			s.Slug,
+			s.Status.Label,
+			nestedName(s.Region),
+			nestedName(s.Tenant),
+		}
+	}
+	fetcher := func(ctx context.Context) ([]netbox.Site, error) {
+		return netbox.ListAll(ctx,
+			client.SitesFetcher(netbox.ListSitesOptions{}),
+			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
+	}
+	return newBaseView[netbox.Site]("Sites", cols, mapper, func(s netbox.Site) int { return s.ID }, fetcher)
+}
+
 // NewRacks returns a View listing /dcim/racks/.
 func NewRacks(client *netbox.Client) View {
 	cols := []table.Column{

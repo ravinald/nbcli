@@ -73,6 +73,12 @@ type Model struct {
 	showHelp bool
 
 	width, height int
+
+	// rightContentW/H cache the right viewport's content dimensions. Computed
+	// by resizeChildren on tea.WindowSizeMsg; reused when swapActive or
+	// navigateTo activates a different view so the new view's table sizes
+	// correctly without waiting for another window resize.
+	rightContentW, rightContentH int
 }
 
 // New constructs the root model with the given Netbox client.
@@ -93,6 +99,7 @@ func New(client *netbox.Client) Model {
 		sections: sections,
 		flat:     flat,
 		views: map[string]views.View{
+			"Sites":            views.NewSites(client),
 			"Tenants":          views.NewTenants(client),
 			"Contacts":         views.NewContacts(client),
 			"Racks":            views.NewRacks(client),
@@ -142,7 +149,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		return m.resizeChildren()
+		nm, cmd := m.resizeChildren()
+		return nm, cmd
 	case views.NavMsg:
 		m.focused = RightViewport
 		return m.navigateTo(msg.ViewName, msg.ID)
@@ -210,37 +218,57 @@ func (m Model) updateLeftViewport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// resizeChildren forwards the right viewport's content dimensions to the
-// active view. Fires on every tea.WindowSizeMsg so resize ripples through.
-func (m Model) resizeChildren() (tea.Model, tea.Cmd) {
-	if m.active == nil {
+// resizeChildren recomputes the right viewport's content dimensions and
+// forwards them to the active view. Fires on tea.WindowSizeMsg.
+func (m Model) resizeChildren() (Model, tea.Cmd) {
+	frameW, frameH := PaneStyle(false).GetFrameSize()
+	w := (m.width - leftPaneTotalWidth) - frameW
+	h := (m.height - 1) - frameH // -1 for the status bar line
+	if w < 20 {
+		w = 20
+	}
+	if h < 5 {
+		h = 5
+	}
+	m.rightContentW = w
+	m.rightContentH = h
+	return m.sizeActive()
+}
+
+// sizeActive forwards the cached right-viewport dimensions to m.active.
+// Called both from resizeChildren (on window resize) and from swapActive /
+// navigateTo (on view change). No-op until at least one WindowSizeMsg has
+// arrived.
+func (m Model) sizeActive() (Model, tea.Cmd) {
+	if m.active == nil || m.rightContentW <= 0 {
 		return m, nil
 	}
-	frameW, frameH := PaneStyle(false).GetFrameSize()
-	rightTotalW := m.width - leftPaneTotalWidth
-	rightContentW := rightTotalW - frameW
-	rightContentH := (m.height - 1) - frameH // -1 for the status bar line
-	if rightContentW < 20 {
-		rightContentW = 20
-	}
-	if rightContentH < 5 {
-		rightContentH = 5
-	}
-	next, cmd := m.active.Update(views.SizeMsg{Width: rightContentW, Height: rightContentH})
+	next, cmd := m.active.Update(views.SizeMsg{
+		Width:  m.rightContentW,
+		Height: m.rightContentH,
+	})
 	if v, ok := next.(views.View); ok {
 		m.active = v
 	}
 	return m, cmd
 }
 
-// swapActive points m.active at the view for the newly-selected sidebar item
-// and returns its Focus cmd (which fetches data on first activation).
+// swapActive points m.active at the view for the newly-selected sidebar item.
+// Returns Focus() (first call kicks off the data fetch) batched with a
+// SizeMsg so the new view's table is sized correctly without waiting for the
+// next terminal resize.
 func (m Model) swapActive() (tea.Model, tea.Cmd) {
 	m.active = m.lookupView()
 	if m.active == nil {
 		return m, nil
 	}
-	return m, m.active.Focus()
+	cmds := []tea.Cmd{m.active.Focus()}
+	nm, sizeCmd := m.sizeActive()
+	m = nm
+	if sizeCmd != nil {
+		cmds = append(cmds, sizeCmd)
+	}
+	return m, tea.Batch(cmds...)
 }
 
 // navigateTo switches the sidebar selection and active view to the named
@@ -258,6 +286,11 @@ func (m Model) navigateTo(viewName string, id int) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		cmds := []tea.Cmd{m.active.Focus()}
+		nm, sizeCmd := m.sizeActive()
+		m = nm
+		if sizeCmd != nil {
+			cmds = append(cmds, sizeCmd)
+		}
 		if opener, ok := m.active.(interface{ OpenDetailByID(int) tea.Cmd }); ok {
 			if c := opener.OpenDetailByID(id); c != nil {
 				cmds = append(cmds, c)
