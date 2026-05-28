@@ -50,32 +50,6 @@ func newShowContactsCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			var rows []netbox.Contact
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					client.ContactsFetcher(opts),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-				if err != nil {
-					return err
-				}
-			} else {
-				page, err := client.ListContacts(cmd.Context(), opts)
-				if err != nil {
-					return err
-				}
-				rows = page.Results
-			}
-
-			cfg := configFromCtx(cmd.Context())
-			explicit, err := output.Parse(cfg.Format)
-			if err != nil {
-				return err
-			}
-			format := output.Resolve(explicit, io.Out)
-			r, err := output.New(format)
-			if err != nil {
-				return err
-			}
 			cols := []output.Column{
 				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Contact).ID) }},
 				{Header: "Name", Extract: func(r any) string { return r.(netbox.Contact).Name }},
@@ -89,7 +63,16 @@ func newShowContactsCmd(io IO) *cobra.Command {
 					return r.(netbox.Contact).Group.Name
 				}},
 			}
-			return r.Render(io.Out, cols, rows)
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.Contact](cmd, io, client.ContactsFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListContacts(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
 }

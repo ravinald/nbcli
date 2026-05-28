@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -23,11 +22,11 @@ var siteKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "tenant", Description: "tenant slug"},
 }, cmdutils.PaginationKeywords()...)
 
-// newShowSitesCmd implements `nbcli show sites [keyword value]...`.
-// The same shape extends to every other resource: declare the keyword set,
-// hand it to cmdutils, map the parsed values onto the typed Options struct.
+// newShowSitesCmd is the reference command shape. Every show subcommand
+// follows the same flow: parse positional keywords → typed Options → either
+// stream all pages (limit 0, streaming-friendly format) or fetch one page.
 func newShowSitesCmd(io IO) *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "sites " + cmdutils.UsageLine(siteKeywords),
 		Short: "List DCIM sites",
 		Long: "List DCIM sites. Filters are positional keyword/value pairs.\n\n" +
@@ -35,12 +34,12 @@ func newShowSitesCmd(io IO) *cobra.Command {
 			"\nExamples:\n" +
 			"  nbcli show sites\n" +
 			"  nbcli show sites status active\n" +
-			"  nbcli show sites region us-west status active limit 100\n",
+			"  nbcli show sites region us-west status active limit 100\n" +
+			"  nbcli show sites limit 0 --format json   # streams full inventory\n",
 		Args:              cmdutils.Validator(siteKeywords),
 		ValidArgsFunction: cmdutils.CompletionFunc(siteKeywords),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kv, _ := cmdutils.ParseShowArgs(args, siteKeywords)
-
 			opts := netbox.ListSitesOptions{
 				Name:   kv["name"],
 				Slug:   kv["slug"],
@@ -53,38 +52,7 @@ func newShowSitesCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-
 			client, err := clientFromCtx(cmd)
-			if err != nil {
-				return err
-			}
-			var rows []netbox.Site
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					netbox.PageFetcher[netbox.Site](func(ctx context.Context, offset, limit int) (netbox.Page[netbox.Site], error) {
-						o := opts
-						o.Offset, o.Limit = offset, limit
-						return client.ListSites(ctx, o)
-					}),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-				if err != nil {
-					return err
-				}
-			} else {
-				page, err := client.ListSites(cmd.Context(), opts)
-				if err != nil {
-					return err
-				}
-				rows = page.Results
-			}
-
-			cfg := configFromCtx(cmd.Context())
-			explicit, err := output.Parse(cfg.Format)
-			if err != nil {
-				return err
-			}
-			format := output.Resolve(explicit, io.Out)
-			r, err := output.New(format)
 			if err != nil {
 				return err
 			}
@@ -107,8 +75,16 @@ func newShowSitesCmd(io IO) *cobra.Command {
 					return r.(netbox.Site).Tenant.Name
 				}},
 			}
-			return r.Render(io.Out, cols, rows)
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.Site](cmd, io, client.SitesFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListSites(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
-	return cmd
 }

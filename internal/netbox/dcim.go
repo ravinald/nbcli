@@ -93,3 +93,13 @@ func (c *Client) ListSites(ctx context.Context, opts ListSitesOptions) (Page[Sit
 	}
 	return page, nil
 }
+
+// SitesFetcher returns a PageFetcher bound to opts, mirroring the convention
+// every other DCIM/IPAM/Virtualization resource exposes.
+func (c *Client) SitesFetcher(opts ListSitesOptions) PageFetcher[Site] {
+	return func(ctx context.Context, offset, limit int) (Page[Site], error) {
+		opts.Offset = offset
+		opts.Limit = limit
+		return c.ListSites(ctx, opts)
+	}
+}

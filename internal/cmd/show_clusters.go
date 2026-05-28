@@ -48,20 +48,7 @@ func newShowClustersCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var rows []netbox.Cluster
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					client.ClustersFetcher(opts),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-			} else {
-				var page netbox.Page[netbox.Cluster]
-				page, err = client.ListClusters(cmd.Context(), opts)
-				rows = page.Results
-			}
-			if err != nil {
-				return err
-			}
-			return renderRows(cmd, io, rows, []output.Column{
+			cols := []output.Column{
 				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Cluster).ID) }},
 				{Header: "Name", Extract: func(r any) string { return r.(netbox.Cluster).Name }},
 				{Header: "Type", Extract: func(r any) string {
@@ -84,7 +71,17 @@ func newShowClustersCmd(io IO) *cobra.Command {
 				}},
 				{Header: "Status", Extract: func(r any) string { return r.(netbox.Cluster).Status.Label }},
 				{Header: "VMs", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Cluster).VirtualMachineCount) }},
-			})
+			}
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.Cluster](cmd, io, client.ClustersFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListClusters(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
 }

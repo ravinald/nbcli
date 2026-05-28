@@ -54,30 +54,6 @@ func newShowRacksCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			var rows []netbox.Rack
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					client.RacksFetcher(opts),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-			} else {
-				var page netbox.Page[netbox.Rack]
-				page, err = client.ListRacks(cmd.Context(), opts)
-				rows = page.Results
-			}
-			if err != nil {
-				return err
-			}
-
-			cfg := configFromCtx(cmd.Context())
-			explicit, err := output.Parse(cfg.Format)
-			if err != nil {
-				return err
-			}
-			format := output.Resolve(explicit, io.Out)
-			r, err := output.New(format)
-			if err != nil {
-				return err
-			}
 			cols := []output.Column{
 				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Rack).ID) }},
 				{Header: "Name", Extract: func(r any) string { return r.(netbox.Rack).Name }},
@@ -108,7 +84,16 @@ func newShowRacksCmd(io IO) *cobra.Command {
 					return r.(netbox.Rack).Tenant.Name
 				}},
 			}
-			return r.Render(io.Out, cols, rows)
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.Rack](cmd, io, client.RacksFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListRacks(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
 }

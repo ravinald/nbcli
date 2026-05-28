@@ -57,20 +57,7 @@ func newShowIPAddressesCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var rows []netbox.IPAddress
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					client.IPAddressesFetcher(opts),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-			} else {
-				var page netbox.Page[netbox.IPAddress]
-				page, err = client.ListIPAddresses(cmd.Context(), opts)
-				rows = page.Results
-			}
-			if err != nil {
-				return err
-			}
-			return renderRows(cmd, io, rows, []output.Column{
+			cols := []output.Column{
 				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.IPAddress).ID) }},
 				{Header: "Address", Extract: func(r any) string { return r.(netbox.IPAddress).Address }},
 				{Header: "Family", Extract: func(r any) string { return r.(netbox.IPAddress).Family.Label }},
@@ -88,7 +75,17 @@ func newShowIPAddressesCmd(io IO) *cobra.Command {
 					}
 					return r.(netbox.IPAddress).Tenant.Name
 				}},
-			})
+			}
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.IPAddress](cmd, io, client.IPAddressesFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListIPAddresses(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
 }

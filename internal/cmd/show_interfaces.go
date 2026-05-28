@@ -70,30 +70,6 @@ func newShowInterfacesCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			var rows []netbox.Interface
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					client.InterfacesFetcher(opts),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-			} else {
-				var page netbox.Page[netbox.Interface]
-				page, err = client.ListInterfaces(cmd.Context(), opts)
-				rows = page.Results
-			}
-			if err != nil {
-				return err
-			}
-
-			cfg := configFromCtx(cmd.Context())
-			explicit, err := output.Parse(cfg.Format)
-			if err != nil {
-				return err
-			}
-			format := output.Resolve(explicit, io.Out)
-			r, err := output.New(format)
-			if err != nil {
-				return err
-			}
 			cols := []output.Column{
 				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Interface).ID) }},
 				{Header: "Name", Extract: func(r any) string { return r.(netbox.Interface).Name }},
@@ -118,7 +94,16 @@ func newShowInterfacesCmd(io IO) *cobra.Command {
 					return strconv.FormatBool(r.(netbox.Interface).MgmtOnly)
 				}},
 			}
-			return r.Render(io.Out, cols, rows)
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.Interface](cmd, io, client.InterfacesFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListInterfaces(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
 }

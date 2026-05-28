@@ -52,20 +52,7 @@ func newShowVLANsCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var rows []netbox.VLAN
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					client.VLANsFetcher(opts),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-			} else {
-				var page netbox.Page[netbox.VLAN]
-				page, err = client.ListVLANs(cmd.Context(), opts)
-				rows = page.Results
-			}
-			if err != nil {
-				return err
-			}
-			return renderRows(cmd, io, rows, []output.Column{
+			cols := []output.Column{
 				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.VLAN).ID) }},
 				{Header: "VID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.VLAN).VID) }},
 				{Header: "Name", Extract: func(r any) string { return r.(netbox.VLAN).Name }},
@@ -94,7 +81,17 @@ func newShowVLANsCmd(io IO) *cobra.Command {
 					}
 					return r.(netbox.VLAN).Tenant.Name
 				}},
-			})
+			}
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.VLAN](cmd, io, client.VLANsFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListVLANs(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
 }

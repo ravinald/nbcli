@@ -51,20 +51,7 @@ func newShowVMsCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var rows []netbox.VirtualMachine
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					client.VMsFetcher(opts),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-			} else {
-				var page netbox.Page[netbox.VirtualMachine]
-				page, err = client.ListVMs(cmd.Context(), opts)
-				rows = page.Results
-			}
-			if err != nil {
-				return err
-			}
-			return renderRows(cmd, io, rows, []output.Column{
+			cols := []output.Column{
 				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.VirtualMachine).ID) }},
 				{Header: "Name", Extract: func(r any) string { return r.(netbox.VirtualMachine).Name }},
 				{Header: "Status", Extract: func(r any) string { return r.(netbox.VirtualMachine).Status.Label }},
@@ -104,7 +91,17 @@ func newShowVMsCmd(io IO) *cobra.Command {
 					}
 					return r.(netbox.VirtualMachine).Tenant.Name
 				}},
-			})
+			}
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.VirtualMachine](cmd, io, client.VMsFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListVMs(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
 }

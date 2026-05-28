@@ -54,20 +54,7 @@ func newShowPrefixesCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var rows []netbox.Prefix
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					client.PrefixesFetcher(opts),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-			} else {
-				var page netbox.Page[netbox.Prefix]
-				page, err = client.ListPrefixes(cmd.Context(), opts)
-				rows = page.Results
-			}
-			if err != nil {
-				return err
-			}
-			return renderRows(cmd, io, rows, []output.Column{
+			cols := []output.Column{
 				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Prefix).ID) }},
 				{Header: "Prefix", Extract: func(r any) string { return r.(netbox.Prefix).Prefix }},
 				{Header: "Family", Extract: func(r any) string { return r.(netbox.Prefix).Family.Label }},
@@ -96,7 +83,17 @@ func newShowPrefixesCmd(io IO) *cobra.Command {
 					}
 					return r.(netbox.Prefix).Tenant.Name
 				}},
-			})
+			}
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.Prefix](cmd, io, client.PrefixesFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListPrefixes(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
 }

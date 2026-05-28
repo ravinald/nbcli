@@ -48,32 +48,6 @@ func newShowTenantsCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			var rows []netbox.Tenant
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					client.TenantsFetcher(opts),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-				if err != nil {
-					return err
-				}
-			} else {
-				page, err := client.ListTenants(cmd.Context(), opts)
-				if err != nil {
-					return err
-				}
-				rows = page.Results
-			}
-
-			cfg := configFromCtx(cmd.Context())
-			explicit, err := output.Parse(cfg.Format)
-			if err != nil {
-				return err
-			}
-			format := output.Resolve(explicit, io.Out)
-			r, err := output.New(format)
-			if err != nil {
-				return err
-			}
 			cols := []output.Column{
 				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Tenant).ID) }},
 				{Header: "Name", Extract: func(r any) string { return r.(netbox.Tenant).Name }},
@@ -86,7 +60,16 @@ func newShowTenantsCmd(io IO) *cobra.Command {
 				}},
 				{Header: "Description", Extract: func(r any) string { return r.(netbox.Tenant).Description }},
 			}
-			return r.Render(io.Out, cols, rows)
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.Tenant](cmd, io, client.TenantsFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListTenants(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
 }

@@ -43,20 +43,7 @@ func newShowVRFsCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var rows []netbox.VRF
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					client.VRFsFetcher(opts),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-			} else {
-				var page netbox.Page[netbox.VRF]
-				page, err = client.ListVRFs(cmd.Context(), opts)
-				rows = page.Results
-			}
-			if err != nil {
-				return err
-			}
-			return renderRows(cmd, io, rows, []output.Column{
+			cols := []output.Column{
 				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.VRF).ID) }},
 				{Header: "Name", Extract: func(r any) string { return r.(netbox.VRF).Name }},
 				{Header: "RD", Extract: func(r any) string { return r.(netbox.VRF).RD }},
@@ -67,7 +54,17 @@ func newShowVRFsCmd(io IO) *cobra.Command {
 					return r.(netbox.VRF).Tenant.Name
 				}},
 				{Header: "Description", Extract: func(r any) string { return r.(netbox.VRF).Description }},
-			})
+			}
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.VRF](cmd, io, client.VRFsFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListVRFs(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
 }

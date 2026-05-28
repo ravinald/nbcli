@@ -16,7 +16,7 @@ Working surface:
 - `nbcli plugin list` — show compiled-in named plugins
 - `nbcli version [--json]`
 
-Every `show` command takes `limit 0` to auto-paginate every page (capped at 200 pages × 100 items as a safety belt; tune in code).
+Every `show` command takes `limit 0` to auto-paginate every page (capped at 200 pages × 100 items as a safety belt; tune in code). For `--format json|yaml|tsv`, rows stream as they arrive — memory stays O(1) and output begins immediately. `--format table` buffers because it needs all rows to align columns.
 
 DCIM (racks, devices, interfaces), IPAM, Virtualization, and the remaining TUI views are still placeholders.
 

@@ -63,30 +63,6 @@ func newShowDevicesCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			var rows []netbox.Device
-			if fetchAll {
-				rows, err = netbox.ListAll(cmd.Context(),
-					client.DevicesFetcher(opts),
-					netbox.IterateOptions{PageSize: 100, MaxPages: 200})
-			} else {
-				var page netbox.Page[netbox.Device]
-				page, err = client.ListDevices(cmd.Context(), opts)
-				rows = page.Results
-			}
-			if err != nil {
-				return err
-			}
-
-			cfg := configFromCtx(cmd.Context())
-			explicit, err := output.Parse(cfg.Format)
-			if err != nil {
-				return err
-			}
-			format := output.Resolve(explicit, io.Out)
-			r, err := output.New(format)
-			if err != nil {
-				return err
-			}
 			cols := []output.Column{
 				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Device).ID) }},
 				{Header: "Name", Extract: func(r any) string { return r.(netbox.Device).Name }},
@@ -127,7 +103,16 @@ func newShowDevicesCmd(io IO) *cobra.Command {
 					return r.(netbox.Device).Tenant.Name
 				}},
 			}
-			return r.Render(io.Out, cols, rows)
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
+
+			if fetchAll {
+				return renderStreaming[netbox.Device](cmd, io, client.DevicesFetcher(opts), iterOpts, cols)
+			}
+			page, err := client.ListDevices(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			return renderRows(cmd, io, page.Results, cols)
 		},
 	}
 }
