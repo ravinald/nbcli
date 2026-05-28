@@ -51,8 +51,16 @@ type NavMsg struct {
 
 // EscapeUpMsg is emitted by a view when Esc was pressed but the view had
 // nothing internal to dismiss (no detail open, no search active, no committed
-// filter). The shell uses this to return keyboard focus to the sidebar.
+// filter). The shell uses this to return keyboard focus to the left viewport.
 type EscapeUpMsg struct{}
+
+// SizeMsg tells a view how much of the terminal its right-viewport pane
+// covers (width and height in cells, after accounting for the left viewport,
+// the status bar, and any chrome). Forwarded by the shell on tea.WindowSizeMsg.
+type SizeMsg struct {
+	Width  int
+	Height int
+}
 
 // FKRef is a parsed foreign-key reference. Built by DetailFKs when scanning
 // a struct's fields. Detail mode uses the slice index + 1 as the user-facing

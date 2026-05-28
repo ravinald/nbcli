@@ -123,6 +123,14 @@ func (b *baseView[T]) Focus() tea.Cmd {
 // and otherwise forwards to the table widget for row navigation.
 func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m := msg.(type) {
+	case SizeMsg:
+		// Reserve vertical chrome: title line, blank, table border, hint line.
+		h := m.Height - 6
+		if h < 5 {
+			h = 5
+		}
+		b.table.SetHeight(h)
+		return b, nil
 	case loadedMsg[T]:
 		b.loading = false
 		b.loaded = true

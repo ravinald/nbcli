@@ -33,15 +33,24 @@ type flatEntry struct {
 	item    int
 }
 
-// Pane identifies which UI region owns the keyboard. Arrow keys, Enter, and
-// most other input route to the focused pane.
-type Pane int
+// Viewport identifies which UI region owns the keyboard.
+//
+//   - LeftViewport   — navigation (the section/item list)
+//   - RightViewport  — results and details (the active resource view)
+//
+// Tab toggles between them; arrow keys move within the focused viewport.
+type Viewport int
 
-// Pane values.
+// Viewport values.
 const (
-	PaneSidebar Pane = iota
-	PaneView
+	LeftViewport Viewport = iota
+	RightViewport
 )
+
+// sidebarWidth is the total horizontal cells the left viewport consumes,
+// including padding and right border. Used to compute the right viewport's
+// pane width when forwarding tea.WindowSizeMsg.
+const sidebarWidth = 26
 
 // Model is the root bubbletea model. It owns the sidebar selection and routes
 // keyboard input / async messages to the currently active resource view.
@@ -58,8 +67,8 @@ type Model struct {
 	views  map[string]views.View
 	active views.View
 
-	// pane is the currently-focused region (sidebar or active view).
-	pane Pane
+	// focused is the currently-active viewport (left or right).
+	focused Viewport
 
 	showHelp bool
 
@@ -96,7 +105,7 @@ func New(client *netbox.Client) Model {
 			"Virtual Machines": views.NewVMs(client),
 			"Clusters":         views.NewClusters(client),
 		},
-		pane: PaneSidebar,
+		focused: LeftViewport,
 	}
 	m.active = m.lookupView()
 	return m
@@ -133,28 +142,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		return m.resizeChildren()
 	case views.NavMsg:
-		m.pane = PaneView
+		m.focused = RightViewport
 		return m.navigateTo(msg.ViewName, msg.ID)
 	case views.EscapeUpMsg:
-		m.pane = PaneSidebar
+		m.focused = LeftViewport
 		return m, nil
 	case tea.KeyMsg:
-		// Global keys, regardless of pane focus.
+		// Global keys, regardless of focus.
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "?":
 			m.showHelp = !m.showHelp
 			return m, nil
+		case "tab", "shift+tab":
+			// Toggle which viewport owns the keyboard.
+			if m.focused == LeftViewport {
+				m.focused = RightViewport
+				if m.active != nil {
+					return m, m.active.Focus()
+				}
+			} else {
+				m.focused = LeftViewport
+			}
+			return m, nil
 		}
 		if m.showHelp {
 			return m, nil
 		}
-		if m.pane == PaneSidebar {
-			return m.updateSidebar(msg)
+		if m.focused == LeftViewport {
+			return m.updateLeftViewport(msg)
 		}
-		// PaneView: fall through to the forward-to-active block below.
+		// RightViewport: fall through to the forward-to-active block below.
 	}
 	if m.active != nil {
 		next, cmd := m.active.Update(msg)
@@ -166,8 +187,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// updateSidebar handles keys while the sidebar holds focus.
-func (m Model) updateSidebar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// updateLeftViewport handles keys while the left (navigation) viewport is focused.
+func (m Model) updateLeftViewport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		if m.flatIndex > 0 {
@@ -179,24 +200,35 @@ func (m Model) updateSidebar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.flatIndex++
 			return m.swapActive()
 		}
-	case "tab", "ctrl+n", "]":
-		if m.flatIndex < len(m.flat)-1 {
-			m.flatIndex++
-			return m.swapActive()
-		}
-	case "shift+tab", "ctrl+p", "[":
-		if m.flatIndex > 0 {
-			m.flatIndex--
-			return m.swapActive()
-		}
 	case "enter", "right", "l":
-		// Hand keyboard focus to the active view.
-		m.pane = PaneView
+		// Equivalent to Tab — hand focus to the right viewport.
+		m.focused = RightViewport
 		if m.active != nil {
 			return m, m.active.Focus()
 		}
 	}
 	return m, nil
+}
+
+// resizeChildren tells the active view how much terminal area it owns.
+// Fires on every tea.WindowSizeMsg so resize ripples through.
+func (m Model) resizeChildren() (tea.Model, tea.Cmd) {
+	if m.active == nil {
+		return m, nil
+	}
+	paneW := m.width - sidebarWidth
+	paneH := m.height - 1 // status bar
+	if paneW < 20 {
+		paneW = 20
+	}
+	if paneH < 8 {
+		paneH = 8
+	}
+	next, cmd := m.active.Update(views.SizeMsg{Width: paneW, Height: paneH})
+	if v, ok := next.(views.View); ok {
+		m.active = v
+	}
+	return m, cmd
 }
 
 // swapActive points m.active at the view for the newly-selected sidebar item
@@ -252,29 +284,32 @@ func (m Model) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, body, status)
 }
 
-// statusLine builds the bottom hint based on which pane has focus.
+// statusLine builds the bottom hint based on which viewport has focus.
 func (m Model) statusLine() string {
 	if m.showHelp {
 		return "? close help · q quit"
 	}
-	if m.pane == PaneSidebar {
-		return "↑/↓ section · → / enter focus view · ? help · q quit"
+	if m.focused == LeftViewport {
+		return "↑/↓ section · tab focus right · ? help · q quit"
 	}
-	return "↑/↓ rows · enter detail · / search · esc back to sidebar · ? help · q quit"
+	return "↑/↓ rows · enter detail · / search · tab focus left · ? help · q quit"
 }
 
 // helpText is the canonical keybind reference shown by `?`.
 func helpText() string {
-	return "Sidebar (focus by default)\n" +
-		"  ↑ / ↓ · k / j      next / previous section item\n" +
-		"  Tab / Shift+Tab    same; ] / [ are aliases\n" +
-		"  Enter / → / l      focus into the active view\n" +
+	return "Viewport focus\n" +
+		"  Tab / Shift+Tab    toggle between left (nav) and right (results)\n" +
+		"  Enter / → / l      from left → focus right\n" +
+		"  Esc                from right → focus left (when nothing to dismiss)\n" +
 		"\n" +
-		"View (when focused)\n" +
+		"Left viewport (navigation)\n" +
+		"  ↑ / ↓ · k / j      select a section item\n" +
+		"\n" +
+		"Right viewport (results)\n" +
 		"  ↑ / ↓ · k / j      move between table rows\n" +
 		"  Enter              show detail of selected row\n" +
 		"  /                  open search input\n" +
-		"  Esc                close detail, clear filter, or return to sidebar\n" +
+		"  Esc                close detail, or clear filter\n" +
 		"\n" +
 		"Detail view\n" +
 		"  1 - 9              follow the FK marked [N] (jump to that resource)\n" +
