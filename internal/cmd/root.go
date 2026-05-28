@@ -43,6 +43,7 @@ func StdIO() IO { return IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr} }
 // rootOptions holds the persistent flags resolved by viper.
 type rootOptions struct {
 	configFile string
+	envFile    string
 	url        string
 	format     string
 	timeout    time.Duration
@@ -65,6 +66,7 @@ func NewRootCmd(io IO) *cobra.Command {
 	}
 
 	root.PersistentFlags().StringVar(&opts.configFile, "config", "", "path to config file (default: $XDG_CONFIG_HOME/nbcli/config.yaml)")
+	root.PersistentFlags().StringVar(&opts.envFile, "env-file", "", "additional env file (overlays ~/.config/nbcli/secrets.env and ~/.env.netbox)")
 	root.PersistentFlags().StringVar(&opts.url, "url", "", "Netbox base URL (env NBCLI_URL)")
 	root.PersistentFlags().StringVar(&opts.format, "format", "", "output format: table|json|yaml|tsv (env NBCLI_FORMAT)")
 	root.PersistentFlags().DurationVar(&opts.timeout, "timeout", 0, "HTTP request timeout (e.g. 10s)")
@@ -73,7 +75,7 @@ func NewRootCmd(io IO) *cobra.Command {
 
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
 		logging.Setup(opts.verbose, io.Err)
-		cfg, err := config.Load(cmd.Flags(), opts.configFile)
+		cfg, err := config.Load(cmd.Flags(), opts.configFile, opts.envFile)
 		if err != nil {
 			return err
 		}

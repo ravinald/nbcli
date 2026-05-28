@@ -63,6 +63,27 @@ export NBCLI_URL=https://netbox.example.com
 export NETBOX_TOKEN=nbt_KEY.TOKEN     # NBCLI_TOKEN also works
 ```
 
+### Token sources (precedence, highest wins)
+
+1. Process env: `NBCLI_TOKEN`, then `NETBOX_TOKEN`, then composed `NETBOX_API_V2_KEY` + `NETBOX_API_V2_TOKEN`
+2. `--env-file <path>`
+3. `$XDG_CONFIG_HOME/nbcli/secrets.env` (or `~/.config/nbcli/secrets.env`)
+4. `~/.env.netbox`
+
+Empty values count as "not set" so a real-env override of `""` won't clobber a file value.
+
+Example `~/.env.netbox`:
+
+```sh
+# Either form works:
+NETBOX_TOKEN=nbt_KEY.TOKEN
+# ...or split, nbcli will compose them with a "." separator:
+NETBOX_API_V2_KEY=nbt_KEY
+NETBOX_API_V2_TOKEN=TOKEN
+```
+
+Format: `KEY=value` lines, `#` comments, optional quotes, optional `export` prefix. No shell expansion — what you `cat` is what nbcli reads.
+
 Example `config.yaml`:
 
 ```yaml

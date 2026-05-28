@@ -23,12 +23,26 @@ var errNoURL = errors.New("config: url is required (set NBCLI_URL, --url, or url
 // EnvPrefix prefixes every env var nbcli reads, e.g. NBCLI_URL, NBCLI_FORMAT.
 const EnvPrefix = "NBCLI"
 
-// TokenEnv is the env var name we read the Netbox API token from. We honor
-// the conventional NETBOX_TOKEN name too — set either.
+// Env var names that can supply the Netbox API token. Listed here so the
+// "no token found" error can name them all and so test code can clear them
+// uniformly.
 const (
-	TokenEnv       = "NBCLI_TOKEN"  //nolint:gosec // env var name, not a credential
-	TokenEnvLegacy = "NETBOX_TOKEN" //nolint:gosec // env var name, not a credential
+	TokenEnv       = "NBCLI_TOKEN"         //nolint:gosec // env var name, not a credential
+	TokenEnvLegacy = "NETBOX_TOKEN"        //nolint:gosec // env var name, not a credential
+	TokenKeyV2     = "NETBOX_API_V2_KEY"   //nolint:gosec // env var name, not a credential
+	TokenSecretV2  = "NETBOX_API_V2_TOKEN" //nolint:gosec // env var name, not a credential
 )
+
+// tokenEnvNames is the precedence list of env vars that already hold a
+// fully-formed Netbox token (highest priority first).
+var tokenEnvNames = []string{TokenEnv, TokenEnvLegacy}
+
+// tokenPairs is the precedence list of env-var pairs that, when both halves
+// are present, get composed as "<key>.<secret>" into a Netbox token. Same
+// project convention as nbt_${KEY}.${TOKEN}, just split across two vars.
+var tokenPairs = [][2]string{
+	{TokenKeyV2, TokenSecretV2},
+}
 
 // Config is the resolved runtime configuration. Anything sensitive (tokens)
 // is loaded but never serialized back to disk by Save().
@@ -53,6 +67,11 @@ type Config struct {
 	// ConfigFile is the resolved path of the config file that was loaded
 	// (empty if none was found).
 	ConfigFile string `mapstructure:"-" yaml:"-"`
+
+	// EnvFiles is the ordered list of env files that contributed values
+	// (lowest to highest priority). Empty when no file was read. Exposed
+	// for diagnostics — never serialized.
+	EnvFiles []string `mapstructure:"-" yaml:"-"`
 }
 
 // Defaults returns a Config with built-in defaults applied. Flag/env/file
@@ -72,7 +91,18 @@ func Defaults() Config {
 //
 // configFile, when non-empty, forces that exact path. Otherwise nbcli looks
 // in $XDG_CONFIG_HOME/nbcli/ then $HOME/.config/nbcli/.
-func Load(flags *pflag.FlagSet, configFile string) (Config, error) {
+//
+// The token follows a separate, env-only chain (a stray `cat config.yaml`
+// must never leak credentials). Highest priority first:
+//
+//  1. process env (NBCLI_TOKEN / NETBOX_TOKEN / NETBOX_API_V2_KEY+_TOKEN)
+//  2. --env-file <path> (extraEnvFile arg)
+//  3. $XDG_CONFIG_HOME/nbcli/secrets.env
+//  4. ~/.env.netbox
+//
+// At any layer, a fully-formed token wins over the KEY+SECRET pair; the pair
+// composes as "<KEY>.<SECRET>" matching nbt_${KEY}.${TOKEN}.
+func Load(flags *pflag.FlagSet, configFile, extraEnvFile string) (Config, error) {
 	v := viper.New()
 	v.SetEnvPrefix(EnvPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
@@ -112,9 +142,86 @@ func Load(flags *pflag.FlagSet, configFile string) (Config, error) {
 	}
 	cfg.ConfigFile = v.ConfigFileUsed()
 
-	cfg.Token = firstNonEmpty(os.Getenv(TokenEnv), os.Getenv(TokenEnvLegacy))
+	effective, loaded := loadEffectiveEnv(extraEnvFile)
+	cfg.Token = composeToken(effective)
+	cfg.EnvFiles = loaded
 
 	return cfg, nil
+}
+
+// loadEffectiveEnv merges env-file values with the real process environment.
+// File order (lowest priority first; later overrides):
+//
+//  1. ~/.env.netbox        — community convention nbcli honors for free
+//  2. $XDG_CONFIG_HOME/nbcli/secrets.env  (or ~/.config/nbcli/secrets.env)
+//  3. extraEnvFile         — --env-file flag, when set
+//  4. process env (os.Environ)            — always wins
+//
+// loadedFiles tracks which files actually contributed, in load order, for
+// diagnostics. Missing files and parse failures are silently skipped — the
+// caller still gets a usable effective env from the layers that did succeed.
+func loadEffectiveEnv(extraEnvFile string) (env map[string]string, loadedFiles []string) {
+	env = map[string]string{}
+	var paths []string
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths,
+			filepath.Join(home, ".env.netbox"),
+			filepath.Join(configDirFor(home), "secrets.env"),
+		)
+	}
+	if extraEnvFile != "" {
+		paths = append(paths, extraEnvFile)
+	}
+	for _, p := range paths {
+		vals, err := LoadEnvFile(p)
+		if err != nil || vals == nil {
+			continue
+		}
+		for k, v := range vals {
+			env[k] = v
+		}
+		loadedFiles = append(loadedFiles, p)
+	}
+	// Real env overrides everything from files — but only for non-empty
+	// values. Empty values are treated as "not set" so a file value can
+	// fill them (matches the conventional shell semantics where an empty
+	// var is functionally the same as unset).
+	for _, e := range os.Environ() {
+		i := strings.IndexByte(e, '=')
+		if i <= 0 {
+			continue
+		}
+		if v := e[i+1:]; v != "" {
+			env[e[:i]] = v
+		}
+	}
+	return env, loadedFiles
+}
+
+// composeToken returns the Netbox API token from the effective env map.
+// Already-formed tokens win over the KEY+SECRET composition.
+func composeToken(env map[string]string) string {
+	for _, n := range tokenEnvNames {
+		if t := env[n]; t != "" {
+			return t
+		}
+	}
+	for _, p := range tokenPairs {
+		k, s := env[p[0]], env[p[1]]
+		if k != "" && s != "" {
+			return k + "." + s
+		}
+	}
+	return ""
+}
+
+// configDirFor returns the nbcli config directory for a given home, honoring
+// $XDG_CONFIG_HOME when set.
+func configDirFor(home string) string {
+	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
+		return filepath.Join(x, "nbcli")
+	}
+	return filepath.Join(home, ".config", "nbcli")
 }
 
 // Validate returns an error if the resolved config is unusable for live calls.
@@ -126,10 +233,11 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// RequireToken returns an error if no token was found in env.
+// RequireToken returns an error if no token was found in env or env-files.
 func (c Config) RequireToken() error {
 	if c.Token == "" {
-		return fmt.Errorf("config: no token found in %s or %s", TokenEnv, TokenEnvLegacy)
+		return fmt.Errorf("config: no token found (set %s, %s, or %s + %s)",
+			TokenEnv, TokenEnvLegacy, TokenKeyV2, TokenSecretV2)
 	}
 	return nil
 }
@@ -153,13 +261,4 @@ func searchPaths() []string {
 		paths = append(paths, filepath.Join(h, ".config", "nbcli"))
 	}
 	return paths
-}
-
-func firstNonEmpty(ss ...string) string {
-	for _, s := range ss {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
 }

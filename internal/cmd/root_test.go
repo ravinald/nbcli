@@ -54,12 +54,24 @@ func TestExecute_Help(t *testing.T) {
 	}
 }
 
+// isolateEnv clears all credential and config-related env vars and reroutes
+// HOME/XDG_CONFIG_HOME so the tests don't pick up the developer's real
+// ~/.env.netbox, secrets.env, or config.yaml.
+func isolateEnv(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home+"/xdg")
+	for _, k := range []string{
+		"NBCLI_URL", "NBCLI_FORMAT", "NBCLI_TOKEN",
+		"NETBOX_TOKEN", "NETBOX_API_V2_KEY", "NETBOX_API_V2_TOKEN",
+	} {
+		t.Setenv(k, "")
+	}
+}
+
 func TestExecute_ShowSites_RequiresURL(t *testing.T) {
-	// Not parallel: mutates env.
-	t.Setenv("NBCLI_URL", "")
-	t.Setenv("NBCLI_TOKEN", "")
-	t.Setenv("NETBOX_TOKEN", "")
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	isolateEnv(t)
 	io, _, errb := makeIO()
 	code := cmd.Execute([]string{"show", "sites"}, io)
 	require.NotEqual(t, 0, code)
@@ -67,9 +79,8 @@ func TestExecute_ShowSites_RequiresURL(t *testing.T) {
 }
 
 func TestExecute_ShowSites_RequiresToken(t *testing.T) {
+	isolateEnv(t)
 	t.Setenv("NBCLI_URL", "https://netbox.example.com")
-	t.Setenv("NBCLI_TOKEN", "")
-	t.Setenv("NETBOX_TOKEN", "")
 	io, _, errb := makeIO()
 	code := cmd.Execute([]string{"show", "sites"}, io)
 	require.NotEqual(t, 0, code)
