@@ -13,11 +13,14 @@ import (
 
 // TenantsView lists tenants in a scrollable table. Data loads on first Focus.
 type TenantsView struct {
-	client  *netbox.Client
-	table   table.Model
-	loaded  bool
-	loading bool
-	err     error
+	client      *netbox.Client
+	table       table.Model
+	rows        []netbox.Tenant
+	selectedIdx int
+	inDetail    bool
+	loaded      bool
+	loading     bool
+	err         error
 }
 
 // tenantsLoadedMsg is private to this view so it can't collide with sibling views.
@@ -84,6 +87,7 @@ func (v *TenantsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.loading = false
 		v.loaded = true
 		v.err = nil
+		v.rows = m.rows
 		rows := make([]table.Row, 0, len(m.rows))
 		for _, t := range m.rows {
 			group := ""
@@ -101,15 +105,35 @@ func (v *TenantsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrMsg:
 		v.loading = false
 		v.err = m.Err
+	case tea.KeyMsg:
+		switch m.String() {
+		case "enter":
+			if !v.inDetail && v.loaded && len(v.rows) > 0 {
+				v.selectedIdx = v.table.Cursor()
+				v.inDetail = true
+				return v, nil
+			}
+		case "esc":
+			if v.inDetail {
+				v.inDetail = false
+				return v, nil
+			}
+		}
+	}
+	if v.inDetail {
+		return v, nil
 	}
 	var cmd tea.Cmd
 	v.table, cmd = v.table.Update(msg)
 	return v, cmd
 }
 
-// View renders the title, then status (loading/error/empty) and the table.
+// View renders the title, then status/table — or detail of the selected row.
 func (v *TenantsView) View() string {
 	body := Header(v.Title())
+	if v.inDetail && v.selectedIdx < len(v.rows) {
+		return body + " · " + Hint("detail · esc back") + "\n\n" + RenderDetail(v.rows[v.selectedIdx])
+	}
 	switch {
 	case v.loading:
 		return body + "\nloading…\n" + Hint("first fetch can take a moment")

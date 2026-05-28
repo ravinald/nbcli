@@ -82,7 +82,7 @@ func New(client *netbox.Client) Model {
 			"Virtual Machines": views.NewVMs(client),
 			"Clusters":         views.NewClusters(client),
 		},
-		status: "↑/↓ navigate · q quit",
+		status: "tab/⇧tab sidebar · ↑/↓ rows · enter detail · esc back · q quit",
 	}
 	m.active = m.lookupView()
 	return m
@@ -121,15 +121,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "up", "k":
-			if m.flatIndex > 0 {
-				m.flatIndex--
+		case "tab", "ctrl+n", "]":
+			if m.flatIndex < len(m.flat)-1 {
+				m.flatIndex++
 				return m.swapActive()
 			}
 			return m, nil
-		case "down", "j":
-			if m.flatIndex < len(m.flat)-1 {
-				m.flatIndex++
+		case "shift+tab", "ctrl+p", "[":
+			if m.flatIndex > 0 {
+				m.flatIndex--
 				return m.swapActive()
 			}
 			return m, nil

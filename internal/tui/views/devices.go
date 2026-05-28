@@ -13,11 +13,14 @@ import (
 
 // DevicesView lists DCIM devices in a scrollable table.
 type DevicesView struct {
-	client  *netbox.Client
-	table   table.Model
-	loaded  bool
-	loading bool
-	err     error
+	client      *netbox.Client
+	table       table.Model
+	rows        []netbox.Device
+	selectedIdx int
+	inDetail    bool
+	loaded      bool
+	loading     bool
+	err         error
 }
 
 type devicesLoadedMsg struct{ rows []netbox.Device }
@@ -75,6 +78,7 @@ func (v *DevicesView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.loading = false
 		v.loaded = true
 		v.err = nil
+		v.rows = m.rows
 		rows := make([]table.Row, 0, len(m.rows))
 		for _, d := range m.rows {
 			devType := ""
@@ -97,15 +101,35 @@ func (v *DevicesView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrMsg:
 		v.loading = false
 		v.err = m.Err
+	case tea.KeyMsg:
+		switch m.String() {
+		case "enter":
+			if !v.inDetail && v.loaded && len(v.rows) > 0 {
+				v.selectedIdx = v.table.Cursor()
+				v.inDetail = true
+				return v, nil
+			}
+		case "esc":
+			if v.inDetail {
+				v.inDetail = false
+				return v, nil
+			}
+		}
+	}
+	if v.inDetail {
+		return v, nil
 	}
 	var cmd tea.Cmd
 	v.table, cmd = v.table.Update(msg)
 	return v, cmd
 }
 
-// View renders the title, status, and table.
+// View renders the title, then status/table — or detail of the selected row.
 func (v *DevicesView) View() string {
 	body := Header(v.Title())
+	if v.inDetail && v.selectedIdx < len(v.rows) {
+		return body + " · " + Hint("detail · esc back") + "\n\n" + RenderDetail(v.rows[v.selectedIdx])
+	}
 	switch {
 	case v.loading:
 		return body + "\nloading…\n" + Hint("first fetch can take a moment")

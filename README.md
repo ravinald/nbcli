@@ -96,6 +96,18 @@ nbcli plugin passthrough my-plugin some/endpoint/ site hq limit 10
 
 The response is rendered as JSON (or YAML if you pass `--format yaml`). `--method` stays a flag since it controls HTTP behavior, not what you're asking the API for.
 
+## TUI keybinds
+
+| Key | Action |
+|---|---|
+| `Tab` / `Shift-Tab` (or `]` / `[`) | Move between sidebar items |
+| `↑` / `↓` / `k` / `j` | Move between rows in the active table |
+| `Enter` | Show detail of the selected row |
+| `Esc` | Close detail view |
+| `q` / `Ctrl-C` | Quit |
+
+Detail view is reflection-based: every non-zero field of the selected resource is printed as `key: value`. `NestedRef` foreign keys collapse to `Name (#id)`; `LabelValue` enums render as their label.
+
 ## Shell completion
 
 cobra generates completion for bash, zsh, fish, and powershell. Positional keywords (`status active region us-west …`) get completed too.
