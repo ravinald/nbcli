@@ -6,6 +6,7 @@ package views
 
 import (
 	"context"
+	"net/url"
 	"strconv"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -29,10 +30,17 @@ func NewTenants(client *netbox.Client) View {
 			nestedName(t.Group),
 		}
 	}
-	fetcher := func(ctx context.Context) ([]netbox.Tenant, error) {
-		return netbox.ListAll(ctx,
-			client.TenantsFetcher(netbox.ListTenantsOptions{}),
-			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
+	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Tenant], error) {
+		listOpts := netbox.ListTenantsOptions{
+			Offset: opts.Offset,
+			Limit:  opts.Limit,
+		}
+		applySearchOrID(&listOpts.Extra, opts)
+		page, err := client.ListTenants(ctx, listOpts)
+		if err != nil {
+			return FetchResult[netbox.Tenant]{}, err
+		}
+		return FetchResult[netbox.Tenant]{Rows: page.Results, Total: page.Count}, nil
 	}
 	return newBaseView[netbox.Tenant]("Tenants", cols, mapper, func(t netbox.Tenant) int { return t.ID }, fetcher)
 }
@@ -55,10 +63,37 @@ func NewContacts(client *netbox.Client) View {
 			c.Phone,
 		}
 	}
-	fetcher := func(ctx context.Context) ([]netbox.Contact, error) {
-		return netbox.ListAll(ctx,
-			client.ContactsFetcher(netbox.ListContactsOptions{}),
-			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
+	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Contact], error) {
+		listOpts := netbox.ListContactsOptions{
+			Offset: opts.Offset,
+			Limit:  opts.Limit,
+		}
+		applySearchOrID(&listOpts.Extra, opts)
+		page, err := client.ListContacts(ctx, listOpts)
+		if err != nil {
+			return FetchResult[netbox.Contact]{}, err
+		}
+		return FetchResult[netbox.Contact]{Rows: page.Results, Total: page.Count}, nil
 	}
 	return newBaseView[netbox.Contact]("Contacts", cols, mapper, func(c netbox.Contact) int { return c.ID }, fetcher)
+}
+
+// applySearchOrID pokes the FetchOpts.Query / FetchOpts.ID into the typed
+// list options' Extra url.Values. ID takes precedence (FK drill-down).
+// Resource-specific list filters (Name, Status, etc.) intentionally stay
+// out of the TUI's reach — the API search via `q=` is the broad-strokes path.
+func applySearchOrID(extra *url.Values, opts FetchOpts) {
+	if opts.ID > 0 {
+		if *extra == nil {
+			*extra = url.Values{}
+		}
+		extra.Set("id", strconv.Itoa(opts.ID))
+		return
+	}
+	if opts.Query != "" {
+		if *extra == nil {
+			*extra = url.Values{}
+		}
+		extra.Set("q", opts.Query)
+	}
 }

@@ -356,17 +356,20 @@ func helpText() string {
 		"\n" +
 		"Right viewport (results)\n" +
 		"  ↑ / ↓ · k / j      move between table rows\n" +
+		"  PgDn / Ctrl+F      next page    (page size = viewport rows)\n" +
+		"  PgUp / Ctrl+B      previous page\n" +
+		"  Home / End         jump to first / last page\n" +
 		"  Enter              show detail of selected row\n" +
-		"  /                  open search input\n" +
-		"  Esc                close detail, or clear filter\n" +
+		"  /                  API search (Netbox q=)\n" +
+		"  Esc                close detail, clear search, or focus left\n" +
 		"\n" +
 		"Detail view\n" +
 		"  1 - 9              follow the FK marked [N] (jump to that resource)\n" +
 		"  Esc                back to list\n" +
 		"\n" +
-		"Search\n" +
-		"  Enter              commit filter (keep visible, exit input)\n" +
-		"  Esc                cancel (clear filter, exit input)\n" +
+		"Search (API-side, hits Netbox)\n" +
+		"  Enter              run the query\n" +
+		"  Esc                cancel (input only; committed query stays)\n" +
 		"\n" +
 		"Global\n" +
 		"  ?                  toggle this help\n" +

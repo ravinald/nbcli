@@ -62,6 +62,30 @@ type SizeMsg struct {
 	Height int
 }
 
+// FetchOpts parameterizes a view's fetcher closure. baseView constructs one
+// per load using its current pagination / search / drill-down state.
+type FetchOpts struct {
+	// Offset is the start index for paged fetches (0 = first page).
+	Offset int
+	// Limit is the page size. baseView sizes this to the viewport on first
+	// SizeMsg. Zero means "fetcher's default".
+	Limit int
+	// Query is the free-text search term sent to Netbox as `?q=`. Empty
+	// means no search.
+	Query string
+	// ID, when > 0, narrows the fetch to a single record by primary key.
+	// Used by FK navigation so OpenDetailByID can find rows that aren't
+	// in the currently-loaded page.
+	ID int
+}
+
+// FetchResult is what a fetcher returns: the current page's rows plus the
+// total count across all matching records (from Netbox's Page.Count).
+type FetchResult[T any] struct {
+	Rows  []T
+	Total int
+}
+
 // FKRef is a parsed foreign-key reference. Built by DetailFKs when scanning
 // a struct's fields. Detail mode uses the slice index + 1 as the user-facing
 // digit key.

@@ -32,10 +32,14 @@ func NewPrefixes(client *netbox.Client) View {
 			p.Status.Label,
 		}
 	}
-	fetcher := func(ctx context.Context) ([]netbox.Prefix, error) {
-		return netbox.ListAll(ctx,
-			client.PrefixesFetcher(netbox.ListPrefixesOptions{}),
-			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
+	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Prefix], error) {
+		listOpts := netbox.ListPrefixesOptions{Offset: opts.Offset, Limit: opts.Limit}
+		applySearchOrID(&listOpts.Extra, opts)
+		page, err := client.ListPrefixes(ctx, listOpts)
+		if err != nil {
+			return FetchResult[netbox.Prefix]{}, err
+		}
+		return FetchResult[netbox.Prefix]{Rows: page.Results, Total: page.Count}, nil
 	}
 	return newBaseView[netbox.Prefix]("Prefixes", cols, mapper, func(p netbox.Prefix) int { return p.ID }, fetcher)
 }
@@ -60,10 +64,14 @@ func NewIPAddresses(client *netbox.Client) View {
 			ip.DNSName,
 		}
 	}
-	fetcher := func(ctx context.Context) ([]netbox.IPAddress, error) {
-		return netbox.ListAll(ctx,
-			client.IPAddressesFetcher(netbox.ListIPAddressesOptions{}),
-			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
+	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.IPAddress], error) {
+		listOpts := netbox.ListIPAddressesOptions{Offset: opts.Offset, Limit: opts.Limit}
+		applySearchOrID(&listOpts.Extra, opts)
+		page, err := client.ListIPAddresses(ctx, listOpts)
+		if err != nil {
+			return FetchResult[netbox.IPAddress]{}, err
+		}
+		return FetchResult[netbox.IPAddress]{Rows: page.Results, Total: page.Count}, nil
 	}
 	return newBaseView[netbox.IPAddress]("IP Addresses", cols, mapper, func(i netbox.IPAddress) int { return i.ID }, fetcher)
 }
@@ -90,10 +98,14 @@ func NewVLANs(client *netbox.Client) View {
 			nestedName(l.Role),
 		}
 	}
-	fetcher := func(ctx context.Context) ([]netbox.VLAN, error) {
-		return netbox.ListAll(ctx,
-			client.VLANsFetcher(netbox.ListVLANsOptions{}),
-			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
+	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.VLAN], error) {
+		listOpts := netbox.ListVLANsOptions{Offset: opts.Offset, Limit: opts.Limit}
+		applySearchOrID(&listOpts.Extra, opts)
+		page, err := client.ListVLANs(ctx, listOpts)
+		if err != nil {
+			return FetchResult[netbox.VLAN]{}, err
+		}
+		return FetchResult[netbox.VLAN]{Rows: page.Results, Total: page.Count}, nil
 	}
 	return newBaseView[netbox.VLAN]("VLANs", cols, mapper, func(v netbox.VLAN) int { return v.ID }, fetcher)
 }
@@ -116,10 +128,14 @@ func NewVRFs(client *netbox.Client) View {
 			r.Description,
 		}
 	}
-	fetcher := func(ctx context.Context) ([]netbox.VRF, error) {
-		return netbox.ListAll(ctx,
-			client.VRFsFetcher(netbox.ListVRFsOptions{}),
-			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
+	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.VRF], error) {
+		listOpts := netbox.ListVRFsOptions{Offset: opts.Offset, Limit: opts.Limit}
+		applySearchOrID(&listOpts.Extra, opts)
+		page, err := client.ListVRFs(ctx, listOpts)
+		if err != nil {
+			return FetchResult[netbox.VRF]{}, err
+		}
+		return FetchResult[netbox.VRF]{Rows: page.Results, Total: page.Count}, nil
 	}
 	return newBaseView[netbox.VRF]("VRFs", cols, mapper, func(v netbox.VRF) int { return v.ID }, fetcher)
 }

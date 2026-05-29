@@ -1,6 +1,5 @@
-// dcim.go holds the bubbletea factories for the Netbox DCIM module: Racks,
-// Devices, and Interfaces. Interfaces caps pagination lower (20 pages) because
-// the result set explodes without a device filter.
+// dcim.go holds the bubbletea factories for the Netbox DCIM module: Sites,
+// Racks, Devices, and Interfaces.
 
 package views
 
@@ -33,10 +32,14 @@ func NewSites(client *netbox.Client) View {
 			nestedName(s.Tenant),
 		}
 	}
-	fetcher := func(ctx context.Context) ([]netbox.Site, error) {
-		return netbox.ListAll(ctx,
-			client.SitesFetcher(netbox.ListSitesOptions{}),
-			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
+	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Site], error) {
+		listOpts := netbox.ListSitesOptions{Offset: opts.Offset, Limit: opts.Limit}
+		applySearchOrID(&listOpts.Extra, opts)
+		page, err := client.ListSites(ctx, listOpts)
+		if err != nil {
+			return FetchResult[netbox.Site]{}, err
+		}
+		return FetchResult[netbox.Site]{Rows: page.Results, Total: page.Count}, nil
 	}
 	return newBaseView[netbox.Site]("Sites", cols, mapper, func(s netbox.Site) int { return s.ID }, fetcher)
 }
@@ -63,10 +66,14 @@ func NewRacks(client *netbox.Client) View {
 			strconv.Itoa(r.UHeight),
 		}
 	}
-	fetcher := func(ctx context.Context) ([]netbox.Rack, error) {
-		return netbox.ListAll(ctx,
-			client.RacksFetcher(netbox.ListRacksOptions{}),
-			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
+	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Rack], error) {
+		listOpts := netbox.ListRacksOptions{Offset: opts.Offset, Limit: opts.Limit}
+		applySearchOrID(&listOpts.Extra, opts)
+		page, err := client.ListRacks(ctx, listOpts)
+		if err != nil {
+			return FetchResult[netbox.Rack]{}, err
+		}
+		return FetchResult[netbox.Rack]{Rows: page.Results, Total: page.Count}, nil
 	}
 	return newBaseView[netbox.Rack]("Racks", cols, mapper, func(r netbox.Rack) int { return r.ID }, fetcher)
 }
@@ -98,17 +105,21 @@ func NewDevices(client *netbox.Client) View {
 			d.Status.Label,
 		}
 	}
-	fetcher := func(ctx context.Context) ([]netbox.Device, error) {
-		return netbox.ListAll(ctx,
-			client.DevicesFetcher(netbox.ListDevicesOptions{}),
-			netbox.IterateOptions{PageSize: 100, MaxPages: 50})
+	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Device], error) {
+		listOpts := netbox.ListDevicesOptions{Offset: opts.Offset, Limit: opts.Limit}
+		applySearchOrID(&listOpts.Extra, opts)
+		page, err := client.ListDevices(ctx, listOpts)
+		if err != nil {
+			return FetchResult[netbox.Device]{}, err
+		}
+		return FetchResult[netbox.Device]{Rows: page.Results, Total: page.Count}, nil
 	}
 	return newBaseView[netbox.Device]("Devices", cols, mapper, func(d netbox.Device) int { return d.ID }, fetcher)
 }
 
-// NewInterfaces returns a View listing /dcim/interfaces/. Capped at 2000 rows
-// (20 pages × 100) because un-narrowed interface lists can be enormous; for
-// targeted queries, use `nbcli show interfaces device ...`.
+// NewInterfaces returns a View listing /dcim/interfaces/. Interfaces are
+// often hundreds of thousands across a fleet; pagination keeps the page
+// load bounded.
 func NewInterfaces(client *netbox.Client) View {
 	cols := []table.Column{
 		{Title: "ID", Width: 6},
@@ -128,10 +139,14 @@ func NewInterfaces(client *netbox.Client) View {
 			i.MACAddress,
 		}
 	}
-	fetcher := func(ctx context.Context) ([]netbox.Interface, error) {
-		return netbox.ListAll(ctx,
-			client.InterfacesFetcher(netbox.ListInterfacesOptions{}),
-			netbox.IterateOptions{PageSize: 100, MaxPages: 20})
+	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Interface], error) {
+		listOpts := netbox.ListInterfacesOptions{Offset: opts.Offset, Limit: opts.Limit}
+		applySearchOrID(&listOpts.Extra, opts)
+		page, err := client.ListInterfaces(ctx, listOpts)
+		if err != nil {
+			return FetchResult[netbox.Interface]{}, err
+		}
+		return FetchResult[netbox.Interface]{Rows: page.Results, Total: page.Count}, nil
 	}
 	return newBaseView[netbox.Interface]("Interfaces", cols, mapper, func(i netbox.Interface) int { return i.ID }, fetcher)
 }

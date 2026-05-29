@@ -3,7 +3,6 @@ package views
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -16,25 +15,25 @@ import (
 type RowMapper[T any] func(T) table.Row
 
 // IDOf returns the Netbox ID of a typed record. Every Netbox resource has an
-// `ID int` field; the factory provides a tiny closure (`func(s Site) int {
-// return s.ID }`) so the generic base can look up records without reflection.
+// `ID int` field; the factory provides a tiny closure so the generic base
+// can look up records without reflection.
 type IDOf[T any] func(T) int
 
-// FetcherFn loads all rows for the view. The concrete factory supplies one
-// that wraps netbox.ListAll with the resource's typed fetcher and a paging
-// budget appropriate to the resource (e.g. interfaces is capped lower).
-type FetcherFn[T any] func(ctx context.Context) ([]T, error)
+// FetcherFn loads one page (or one single record) according to opts. The
+// factory closure wraps the resource's typed client method with the right
+// query/filter plumbing.
+type FetcherFn[T any] func(ctx context.Context, opts FetchOpts) (FetchResult[T], error)
 
 // baseView is the generic skeleton every resource view uses. It owns:
 //
-//   - the bubbles/table widget and its row cache
-//   - load lifecycle (loaded/loading/err)
-//   - detail-mode state and key handling (Enter → detail, Esc → list)
+//   - the bubbles/table widget
+//   - pagination state (offset/limit/total)
+//   - committed search query (sent to the API, not client-filtered)
+//   - detail-mode state and key handling
+//   - FK drill-down (OpenDetailByID + ID-passthrough on the fetcher)
 //
 // Concrete factories (NewTenants, NewDevices, ...) build a *baseView[T] with
-// the right title/columns/mapper/fetcher and return it as a View. The
-// concrete types are erased — the generic baseView is the only View
-// implementation in the package.
+// the right title/columns/mapper/idOf/fetcher and return it as a View.
 type baseView[T any] struct {
 	title   string
 	table   table.Model
@@ -42,23 +41,23 @@ type baseView[T any] struct {
 	idOf    IDOf[T]
 	fetcher FetcherFn[T]
 
-	// allRows is the full unfiltered cache from the last fetch; rows is the
-	// currently-visible slice (== allRows when no filter is active, the
-	// filtered subset when search is committed).
-	allRows []T
-	rows    []T
+	// Pagination + search state.
+	rows   []T    // current page's rows
+	offset int    // current page's start index
+	limit  int    // page size; viewport-derived after first SizeMsg
+	total  int    // total matching records reported by the API
+	query  string // committed search query ("" → no search)
 
 	selectedIdx int
 	inDetail    bool
 	detailFKs   []FKRef
 
-	// pendingOpenID is set when OpenDetailByID was called before the view
-	// finished loading. The load handler honors it.
+	// pendingOpenID is consumed by the next fetchCmd. Set by OpenDetailByID
+	// when the target ID isn't in the current page; the fetch uses ?id=<n>
+	// to retrieve just that record and opens detail on load.
 	pendingOpenID int
 
-	// search is the inline filter. searching is true while the input is
-	// focused; the input's value is the live query. When searching is false
-	// but the value is non-empty, the table shows the committed filter.
+	// searching is true while the textinput owns the keyboard.
 	searching   bool
 	searchInput textinput.Model
 
@@ -67,12 +66,17 @@ type baseView[T any] struct {
 	err     error
 }
 
-// loadedMsg is the per-T async-load result. Generic so different views can't
-// accidentally consume each other's load messages.
-type loadedMsg[T any] struct{ rows []T }
+// loadedMsg carries the typed FetchResult plus a marker indicating whether
+// the fetch was an ID-by-ID drill-down (so the receiver opens detail).
+type loadedMsg[T any] struct {
+	result     FetchResult[T]
+	wasIDFetch bool
+}
 
-// newBaseView constructs a configured baseView. Columns, mapper, idOf, and
-// fetcher are fixed at construction; the fetcher fires on first Focus.
+// defaultPageSize is the limit used until the first SizeMsg arrives.
+const defaultPageSize = 50
+
+// newBaseView constructs a configured baseView.
 func newBaseView[T any](title string, cols []table.Column, mapper RowMapper[T], idOf IDOf[T], fetcher FetcherFn[T]) *baseView[T] {
 	t := table.New(
 		table.WithColumns(cols),
@@ -100,53 +104,86 @@ func newBaseView[T any](title string, cols []table.Column, mapper RowMapper[T], 
 // Title is the human label rendered above the view body.
 func (b *baseView[T]) Title() string { return b.title }
 
-// Init is required by tea.Model; loading is driven by Focus.
+// Init is required by tea.Model; loading is driven by Focus / SizeMsg.
 func (b *baseView[T]) Init() tea.Cmd { return nil }
 
-// Focus fetches data the first time it's called. Re-focus is a no-op.
+// Focus fetches the first page on first call. Re-focus on an already-loaded
+// view is a no-op unless a pending ID drill-down is queued.
 func (b *baseView[T]) Focus() tea.Cmd {
+	if b.pendingOpenID > 0 {
+		return b.fetchCmd()
+	}
 	if b.loaded || b.loading {
 		return nil
 	}
+	return b.fetchCmd()
+}
+
+// fetchCmd snapshots the current pagination/search/ID state and returns a
+// Cmd that asks the closure for that page. Always reset pendingOpenID at
+// snapshot time so a follow-up fetch (page change, search) doesn't drag it.
+func (b *baseView[T]) fetchCmd() tea.Cmd {
 	b.loading = true
+	opts := FetchOpts{
+		Offset: b.offset,
+		Limit:  b.limit,
+		Query:  b.query,
+	}
+	if opts.Limit <= 0 {
+		opts.Limit = defaultPageSize
+	}
+	wasIDFetch := false
+	if b.pendingOpenID > 0 {
+		opts.ID = b.pendingOpenID
+		opts.Offset = 0
+		opts.Limit = 1
+		opts.Query = ""
+		b.pendingOpenID = 0
+		wasIDFetch = true
+	}
+	fn := b.fetcher
 	return func() tea.Msg {
-		rows, err := b.fetcher(context.Background())
+		result, err := fn(context.Background(), opts)
 		if err != nil {
 			return ErrMsg{Err: err}
 		}
-		return loadedMsg[T]{rows: rows}
+		return loadedMsg[T]{result: result, wasIDFetch: wasIDFetch}
 	}
 }
 
-// Update routes async load messages, detail-mode keys (Enter/Esc), search
-// keys ('/' to open, typing while open, Enter to commit, Esc to cancel),
-// and otherwise forwards to the table widget for row navigation.
+// Update routes async load messages, pagination keys, search keys, detail
+// keys, and otherwise forwards to the table widget.
 func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m := msg.(type) {
 	case SizeMsg:
-		// Vertical chrome: title line + blank + table header + table border + hint line.
+		// Vertical chrome: title + blank + table header + table border + status hint.
 		h := m.Height - 5
 		if h < 5 {
 			h = 5
 		}
 		b.table.SetHeight(h)
-		// Let the table know its render width so it can clip cleanly when
-		// the terminal is narrower than the sum of column widths.
 		if m.Width > 4 {
 			b.table.SetWidth(m.Width)
+		}
+		// Set the page size from the viewport on first sizing; later
+		// resizes don't change the page size mid-browse to avoid a
+		// disruptive refetch.
+		if b.limit == 0 {
+			b.limit = h
 		}
 		return b, nil
 	case loadedMsg[T]:
 		b.loading = false
 		b.loaded = true
 		b.err = nil
-		b.allRows = m.rows
-		b.applyFilter()
-		// Pick up a deferred drill-down request now that data is in.
-		if b.pendingOpenID != 0 {
-			wanted := b.pendingOpenID
-			b.pendingOpenID = 0
-			b.openDetailLocal(wanted)
+		b.rows = m.result.Rows
+		b.total = m.result.Total
+		b.refreshTable()
+		if m.wasIDFetch && len(b.rows) > 0 {
+			b.selectedIdx = 0
+			b.inDetail = true
+			b.detailFKs = DetailFKs(b.rows[0])
+			b.table.SetCursor(0)
 		}
 		return b, nil
 	case ErrMsg:
@@ -154,25 +191,32 @@ func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		b.err = m.Err
 		return b, nil
 	case tea.KeyMsg:
-		// Search-mode keys consume everything (textinput owns the keyboard).
+		// Search-mode keys consume everything; the textinput owns the keyboard.
 		if b.searching {
 			switch m.String() {
 			case "esc":
 				b.searching = false
 				b.searchInput.Blur()
-				b.searchInput.SetValue("")
-				b.applyFilter()
+				// Esc in search input always cancels what the user was
+				// about to commit. If a query was already committed, leave
+				// it (a separate Esc from the list clears it).
 				return b, nil
 			case "enter":
 				b.searching = false
 				b.searchInput.Blur()
-				return b, nil
+				newQuery := b.searchInput.Value()
+				if newQuery == b.query {
+					return b, nil
+				}
+				b.query = newQuery
+				b.offset = 0
+				return b, b.fetchCmd()
 			}
 			var cmd tea.Cmd
 			b.searchInput, cmd = b.searchInput.Update(msg)
-			b.applyFilter()
 			return b, cmd
 		}
+
 		// Detail-mode FK navigation: digit keys jump to the [N]-tagged FK.
 		if b.inDetail {
 			s := m.String()
@@ -187,7 +231,6 @@ func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Normal (list / detail) mode.
 		switch m.String() {
 		case "enter":
 			if !b.inDetail && b.loaded && len(b.rows) > 0 {
@@ -202,18 +245,47 @@ func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				b.detailFKs = nil
 				return b, nil
 			}
-			// Esc with a committed filter clears it.
-			if b.searchInput.Value() != "" {
+			// Esc with a committed query clears it and reloads.
+			if b.query != "" {
+				b.query = ""
+				b.offset = 0
 				b.searchInput.SetValue("")
-				b.applyFilter()
-				return b, nil
+				return b, b.fetchCmd()
 			}
 			// Nothing internal to dismiss → bubble up so the shell can de-focus.
 			return b, func() tea.Msg { return EscapeUpMsg{} }
 		case "/":
 			if !b.inDetail && b.loaded {
 				b.searching = true
+				b.searchInput.SetValue(b.query)
+				b.searchInput.CursorEnd()
 				return b, b.searchInput.Focus()
+			}
+		case "pgdown", "ctrl+f":
+			if !b.inDetail && b.loaded && b.offset+b.limit < b.total {
+				b.offset += b.limit
+				return b, b.fetchCmd()
+			}
+		case "pgup", "ctrl+b":
+			if !b.inDetail && b.loaded && b.offset > 0 {
+				b.offset -= b.limit
+				if b.offset < 0 {
+					b.offset = 0
+				}
+				return b, b.fetchCmd()
+			}
+		case "home":
+			if !b.inDetail && b.loaded && b.offset > 0 {
+				b.offset = 0
+				return b, b.fetchCmd()
+			}
+		case "end":
+			if !b.inDetail && b.loaded && b.total > 0 && b.limit > 0 {
+				last := ((b.total - 1) / b.limit) * b.limit
+				if last != b.offset {
+					b.offset = last
+					return b, b.fetchCmd()
+				}
 			}
 		}
 	}
@@ -225,29 +297,8 @@ func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return b, cmd
 }
 
-// applyFilter rebuilds b.rows and the table from b.allRows and the current
-// search query. Empty query == no filter == all rows visible.
-func (b *baseView[T]) applyFilter() {
-	q := strings.ToLower(strings.TrimSpace(b.searchInput.Value()))
-	if q == "" {
-		b.rows = b.allRows
-	} else {
-		filtered := make([]T, 0, len(b.allRows))
-		for _, r := range b.allRows {
-			row := b.mapper(r)
-			matched := false
-			for _, cell := range row {
-				if strings.Contains(strings.ToLower(cell), q) {
-					matched = true
-					break
-				}
-			}
-			if matched {
-				filtered = append(filtered, r)
-			}
-		}
-		b.rows = filtered
-	}
+// refreshTable rebuilds the bubbles/table's rows from b.rows via the mapper.
+func (b *baseView[T]) refreshTable() {
 	tblRows := make([]table.Row, 0, len(b.rows))
 	for _, r := range b.rows {
 		tblRows = append(tblRows, b.mapper(r))
@@ -255,38 +306,25 @@ func (b *baseView[T]) applyFilter() {
 	b.table.SetRows(tblRows)
 }
 
-// OpenDetailByID switches the view to detail mode for the record matching id.
-// If the view hasn't loaded yet the request is deferred until loadedMsg
-// arrives. Returns a tea.Cmd that kicks off the load on first call.
+// OpenDetailByID asks the view to switch to detail mode for the record with
+// the given ID. If the ID is in the current page, opens detail directly;
+// otherwise queues a single-record fetch by ID. The fetcher must support the
+// FetchOpts.ID field.
 func (b *baseView[T]) OpenDetailByID(id int) tea.Cmd {
-	if b.loaded {
-		b.openDetailLocal(id)
-		return nil
-	}
-	b.pendingOpenID = id
-	return b.Focus()
-}
-
-// openDetailLocal looks up id in allRows and opens detail. No-op if the id
-// isn't in the loaded set (the user just sees the list view of the target).
-func (b *baseView[T]) openDetailLocal(id int) {
-	if b.idOf == nil {
-		return
-	}
-	// Clear any active filter so the target row is visible.
-	if b.searchInput.Value() != "" {
-		b.searchInput.SetValue("")
-	}
-	b.applyFilter()
-	for i, r := range b.rows {
-		if b.idOf(r) == id {
-			b.selectedIdx = i
-			b.inDetail = true
-			b.detailFKs = DetailFKs(r)
-			b.table.SetCursor(i)
-			return
+	if b.idOf != nil {
+		for i, r := range b.rows {
+			if b.idOf(r) == id {
+				b.selectedIdx = i
+				b.inDetail = true
+				b.detailFKs = DetailFKs(r)
+				b.table.SetCursor(i)
+				return nil
+			}
 		}
 	}
+	// Not in current page → ask the fetcher to GET this one record by id.
+	b.pendingOpenID = id
+	return b.fetchCmd()
 }
 
 // View renders the title and either the table or the detail of the selected row.
@@ -310,22 +348,30 @@ func (b *baseView[T]) View() string {
 	return body + "\n" + b.table.View() + "\n" + b.statusLine()
 }
 
-// statusLine renders the bottom strip — search input when active, filter
-// summary when a query is committed, default keybind hint otherwise.
+// statusLine builds the bottom strip — search input when active, page info
+// + committed search summary otherwise.
 func (b *baseView[T]) statusLine() string {
-	switch {
-	case b.searching:
-		return "/" + b.searchInput.View() + "  " + Hint("enter keep · esc clear")
-	case b.searchInput.Value() != "":
-		return Hint(fmt.Sprintf("filter %q · %d/%d rows · esc clear · / edit",
-			b.searchInput.Value(), len(b.rows), len(b.allRows)))
-	default:
-		return Hint("↑/↓ row · enter detail · / search · q quit")
+	if b.searching {
+		return "/" + b.searchInput.View() + "  " + Hint("enter search · esc cancel")
 	}
+	pages := ""
+	if b.limit > 0 && b.total > 0 {
+		cur := b.offset/b.limit + 1
+		tot := (b.total + b.limit - 1) / b.limit
+		end := b.offset + len(b.rows)
+		if end > b.total {
+			end = b.total
+		}
+		pages = fmt.Sprintf(" · page %d/%d · rows %d-%d of %d",
+			cur, tot, b.offset+1, end, b.total)
+	}
+	if b.query != "" {
+		return Hint(fmt.Sprintf("search %q%s · esc clear · / edit", b.query, pages))
+	}
+	return Hint(fmt.Sprintf("pgup/pgdn page%s · / search · enter detail · q quit", pages))
 }
 
 // defaultTableStyles is the shared lipgloss table style used by every view.
-// Centralized so theme tweaks land in one place.
 func defaultTableStyles() table.Styles {
 	s := table.DefaultStyles()
 	s.Header = s.Header.
