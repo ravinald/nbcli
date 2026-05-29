@@ -51,6 +51,9 @@ type baseView[T any] struct {
 	selectedIdx int
 	inDetail    bool
 	detailFKs   []FKRef
+	// detailCursor is the highlighted FK in detail mode. -1 means no FKs
+	// (or the view has no detail open). Up/Down/k/j move it; Enter follows.
+	detailCursor int
 
 	// pendingOpenID is consumed by the next fetchCmd. Set by OpenDetailByID
 	// when the target ID isn't in the current page; the fetch uses ?id=<n>
@@ -186,6 +189,10 @@ func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			b.selectedIdx = 0
 			b.inDetail = true
 			b.detailFKs = DetailFKs(b.rows[0])
+			b.detailCursor = -1
+			if len(b.detailFKs) > 0 {
+				b.detailCursor = 0
+			}
 			b.table.SetCursor(0)
 		}
 		return b, nil
@@ -220,9 +227,10 @@ func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return b, cmd
 		}
 
-		// Detail-mode FK navigation: digit keys jump to the [N]-tagged FK.
+		// Detail-mode keymap is self-contained — different from list mode.
 		if b.inDetail {
 			s := m.String()
+			// Direct digit jumps: works even for FKs beyond the cursor.
 			if len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
 				idx := int(s[0]-'0') - 1
 				if idx < len(b.detailFKs) {
@@ -231,23 +239,50 @@ func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return NavMsg{ViewName: fk.ViewName, ID: fk.ID}
 					}
 				}
+				return b, nil
 			}
+			switch s {
+			case "up", "k":
+				if b.detailCursor > 0 {
+					b.detailCursor--
+				}
+				return b, nil
+			case "down", "j":
+				if b.detailCursor >= 0 && b.detailCursor < len(b.detailFKs)-1 {
+					b.detailCursor++
+				}
+				return b, nil
+			case "enter":
+				if b.detailCursor >= 0 && b.detailCursor < len(b.detailFKs) {
+					fk := b.detailFKs[b.detailCursor]
+					return b, func() tea.Msg {
+						return NavMsg{ViewName: fk.ViewName, ID: fk.ID}
+					}
+				}
+				return b, nil
+			case "esc":
+				b.inDetail = false
+				b.detailFKs = nil
+				b.detailCursor = -1
+				return b, nil
+			}
+			// Swallow other keys in detail; don't forward to table.
+			return b, nil
 		}
 
 		switch m.String() {
 		case "enter":
-			if !b.inDetail && b.loaded && len(b.rows) > 0 {
+			if b.loaded && len(b.rows) > 0 {
 				b.selectedIdx = b.table.Cursor()
 				b.inDetail = true
 				b.detailFKs = DetailFKs(b.rows[b.selectedIdx])
+				b.detailCursor = -1
+				if len(b.detailFKs) > 0 {
+					b.detailCursor = 0
+				}
 				return b, nil
 			}
 		case "esc":
-			if b.inDetail {
-				b.inDetail = false
-				b.detailFKs = nil
-				return b, nil
-			}
 			// Esc with a committed query clears it and reloads.
 			if b.query != "" {
 				b.query = ""
@@ -320,6 +355,10 @@ func (b *baseView[T]) OpenDetailByID(id int) tea.Cmd {
 				b.selectedIdx = i
 				b.inDetail = true
 				b.detailFKs = DetailFKs(r)
+				b.detailCursor = -1
+				if len(b.detailFKs) > 0 {
+					b.detailCursor = 0
+				}
 				b.table.SetCursor(i)
 				return nil
 			}
@@ -334,11 +373,13 @@ func (b *baseView[T]) OpenDetailByID(id int) tea.Cmd {
 func (b *baseView[T]) View() string {
 	body := Header(b.title)
 	if b.inDetail && b.selectedIdx < len(b.rows) {
-		hint := "detail · esc back"
+		detail := RenderDetailCursor(b.rows[b.selectedIdx], b.detailCursor)
+		topHint := Hint("detail · esc back")
+		bottomHelp := ""
 		if len(b.detailFKs) > 0 {
-			hint = "detail · 1-9 follow link · esc back"
+			bottomHelp = "\n\n" + Hint("↑/↓ select link · enter follow · 1-9 jump · esc back")
 		}
-		return body + " · " + Hint(hint) + "\n\n" + RenderDetail(b.rows[b.selectedIdx])
+		return body + " · " + topHint + "\n\n" + detail + bottomHelp
 	}
 	switch {
 	case b.loading:

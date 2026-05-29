@@ -202,6 +202,9 @@ var (
 	detailKeyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#04B575")).
 			Bold(true)
+	detailCursorStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#7D56F4")).
+				Bold(true)
 )
 
 // Header renders a view's top-line title in the shared accent color.
@@ -224,13 +227,20 @@ func nestedName(n *netbox.NestedRef) string {
 	return n.Name
 }
 
-// RenderDetail returns a key/value rendering of v (any struct) using reflection.
-// Non-zero fields only. NestedRef collapses to "Name (#id)"; LabelValue to its
-// Label. Pointer fields are deref'd. Used by every view's detail pane so we
-// don't write a hand-rolled detail layout per resource. Navigable foreign
-// keys are tagged with "[N]" markers — press the matching digit in detail
-// mode to jump to the referenced resource.
+// RenderDetail returns a key/value rendering of v with no cursor highlight.
+// Equivalent to RenderDetailCursor(v, -1); kept as the zero-arg API.
 func RenderDetail(v any) string {
+	return RenderDetailCursor(v, -1)
+}
+
+// RenderDetailCursor returns a key/value rendering of v (any struct) using
+// reflection. Non-zero fields only. NestedRef collapses to "Name (#id)";
+// LabelValue to its Label. Pointer fields are deref'd. Navigable foreign
+// keys are tagged with "[N]" markers (press the digit to jump) and the FK
+// at fkCursor — when 0 ≤ fkCursor < len(DetailFKs(v)) — is highlighted
+// with a ▸ prefix and accent color so the user sees what Enter will follow.
+// Pass fkCursor=-1 for no highlight.
+func RenderDetailCursor(v any, fkCursor int) string {
 	rv := reflect.ValueOf(v)
 	for rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
@@ -241,11 +251,11 @@ func RenderDetail(v any) string {
 	if rv.Kind() != reflect.Struct {
 		return fmt.Sprintf("%v", v)
 	}
-	// Build FK index by field key so we can annotate matching fields.
+	// Build FK index by field key (0-indexed for cursor compare).
 	fks := DetailFKs(v)
 	fkByKey := make(map[string]int, len(fks))
 	for i, fk := range fks {
-		fkByKey[fk.FieldKey] = i + 1
+		fkByKey[fk.FieldKey] = i
 	}
 
 	width := 0
@@ -271,11 +281,16 @@ func RenderDetail(v any) string {
 		}
 		key := detailFieldKey(f)
 		val := detailFieldValue(fv)
-		if n, ok := fkByKey[key]; ok {
-			val = fmt.Sprintf("%s  %s", val, Hint(fmt.Sprintf("[%d]", n)))
+		fkIdx, isFK := fkByKey[key]
+		if isFK {
+			val = fmt.Sprintf("%s  %s", val, Hint(fmt.Sprintf("[%d]", fkIdx+1)))
 		}
-		lines = append(lines, fmt.Sprintf("%s %s",
-			detailKeyStyle.Render(fmt.Sprintf("%-*s", width, key)+":"), val))
+		keyText := fmt.Sprintf("%-*s:", width, key)
+		if isFK && fkIdx == fkCursor {
+			lines = append(lines, detailCursorStyle.Render("▸ "+keyText)+" "+val)
+		} else {
+			lines = append(lines, "  "+detailKeyStyle.Render(keyText)+" "+val)
+		}
 	}
 	return strings.Join(lines, "\n")
 }
