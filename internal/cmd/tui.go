@@ -19,7 +19,8 @@ func newTUICmd(_ IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return tui.Run(client)
+			cfg := configFromCtx(cmd.Context())
+			return tui.Run(client, cfg.Columns)
 		},
 	}
 }

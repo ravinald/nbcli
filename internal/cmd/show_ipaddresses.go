@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
-	"github.com/ravinald/nbcli/internal/output"
 )
 
 var ipAddressKeywords = append([]cmdutils.KeywordSpec{
@@ -57,25 +54,7 @@ func newShowIPAddressesCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cols := []output.Column{
-				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.IPAddress).ID) }},
-				{Header: "Address", Extract: func(r any) string { return r.(netbox.IPAddress).Address }},
-				{Header: "Family", Extract: func(r any) string { return r.(netbox.IPAddress).Family.Label }},
-				{Header: "VRF", Extract: func(r any) string {
-					if r.(netbox.IPAddress).VRF == nil {
-						return ""
-					}
-					return r.(netbox.IPAddress).VRF.Name
-				}},
-				{Header: "Status", Extract: func(r any) string { return r.(netbox.IPAddress).Status.Label }},
-				{Header: "DNS", Extract: func(r any) string { return r.(netbox.IPAddress).DNSName }},
-				{Header: "Tenant", Extract: func(r any) string {
-					if r.(netbox.IPAddress).Tenant == nil {
-						return ""
-					}
-					return r.(netbox.IPAddress).Tenant.Name
-				}},
-			}
+			cols := resolveColumns(cmd, "ip-addresses")
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
 			if fetchAll {

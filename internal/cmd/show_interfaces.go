@@ -8,7 +8,6 @@ import (
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
-	"github.com/ravinald/nbcli/internal/output"
 )
 
 // interfaceKeywords is the positional keyword set for `nbcli show interfaces`.
@@ -70,30 +69,7 @@ func newShowInterfacesCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := []output.Column{
-				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Interface).ID) }},
-				{Header: "Name", Extract: func(r any) string { return r.(netbox.Interface).Name }},
-				{Header: "Device", Extract: func(r any) string {
-					if r.(netbox.Interface).Device == nil {
-						return ""
-					}
-					return r.(netbox.Interface).Device.Name
-				}},
-				{Header: "Type", Extract: func(r any) string { return r.(netbox.Interface).Type.Label }},
-				{Header: "Enabled", Extract: func(r any) string {
-					return strconv.FormatBool(r.(netbox.Interface).Enabled)
-				}},
-				{Header: "MAC", Extract: func(r any) string { return r.(netbox.Interface).MACAddress }},
-				{Header: "MTU", Extract: func(r any) string {
-					if m := r.(netbox.Interface).MTU; m != nil {
-						return strconv.Itoa(*m)
-					}
-					return ""
-				}},
-				{Header: "MgmtOnly", Extract: func(r any) string {
-					return strconv.FormatBool(r.(netbox.Interface).MgmtOnly)
-				}},
-			}
+			cols := resolveColumns(cmd, "interfaces")
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
 			if fetchAll {

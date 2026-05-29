@@ -5,33 +5,14 @@ package views
 
 import (
 	"context"
-	"strconv"
-
-	"github.com/charmbracelet/bubbles/table"
 
 	"github.com/ravinald/nbcli/internal/netbox"
 )
 
 // NewPrefixes returns a View listing /ipam/prefixes/.
-func NewPrefixes(client *netbox.Client) View {
-	cols := []table.Column{
-		{Title: "ID", Width: 6},
-		{Title: "Prefix", Width: 24},
-		{Title: "Family", Width: 7},
-		{Title: "VRF", Width: 14},
-		{Title: "Site", Width: 14},
-		{Title: "Status", Width: 12},
-	}
-	mapper := func(p netbox.Prefix) table.Row {
-		return table.Row{
-			strconv.Itoa(p.ID),
-			p.Prefix,
-			p.Family.Label,
-			nestedName(p.VRF),
-			nestedName(p.Site),
-			p.Status.Label,
-		}
-	}
+func NewPrefixes(client *netbox.Client, resolve ColumnsResolver) View {
+	visible := resolve("prefixes")
+	cols, mapper := buildCols[netbox.Prefix](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Prefix], error) {
 		listOpts := netbox.ListPrefixesOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -45,25 +26,9 @@ func NewPrefixes(client *netbox.Client) View {
 }
 
 // NewIPAddresses returns a View listing /ipam/ip-addresses/.
-func NewIPAddresses(client *netbox.Client) View {
-	cols := []table.Column{
-		{Title: "ID", Width: 6},
-		{Title: "Address", Width: 22},
-		{Title: "Family", Width: 7},
-		{Title: "VRF", Width: 14},
-		{Title: "Status", Width: 12},
-		{Title: "DNS", Width: 24},
-	}
-	mapper := func(ip netbox.IPAddress) table.Row {
-		return table.Row{
-			strconv.Itoa(ip.ID),
-			ip.Address,
-			ip.Family.Label,
-			nestedName(ip.VRF),
-			ip.Status.Label,
-			ip.DNSName,
-		}
-	}
+func NewIPAddresses(client *netbox.Client, resolve ColumnsResolver) View {
+	visible := resolve("ip-addresses")
+	cols, mapper := buildCols[netbox.IPAddress](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.IPAddress], error) {
 		listOpts := netbox.ListIPAddressesOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -77,27 +42,9 @@ func NewIPAddresses(client *netbox.Client) View {
 }
 
 // NewVLANs returns a View listing /ipam/vlans/.
-func NewVLANs(client *netbox.Client) View {
-	cols := []table.Column{
-		{Title: "ID", Width: 6},
-		{Title: "VID", Width: 6},
-		{Title: "Name", Width: 22},
-		{Title: "Site", Width: 14},
-		{Title: "Group", Width: 14},
-		{Title: "Status", Width: 12},
-		{Title: "Role", Width: 14},
-	}
-	mapper := func(l netbox.VLAN) table.Row {
-		return table.Row{
-			strconv.Itoa(l.ID),
-			strconv.Itoa(l.VID),
-			l.Name,
-			nestedName(l.Site),
-			nestedName(l.Group),
-			l.Status.Label,
-			nestedName(l.Role),
-		}
-	}
+func NewVLANs(client *netbox.Client, resolve ColumnsResolver) View {
+	visible := resolve("vlans")
+	cols, mapper := buildCols[netbox.VLAN](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.VLAN], error) {
 		listOpts := netbox.ListVLANsOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -111,23 +58,9 @@ func NewVLANs(client *netbox.Client) View {
 }
 
 // NewVRFs returns a View listing /ipam/vrfs/.
-func NewVRFs(client *netbox.Client) View {
-	cols := []table.Column{
-		{Title: "ID", Width: 6},
-		{Title: "Name", Width: 20},
-		{Title: "RD", Width: 18},
-		{Title: "Tenant", Width: 16},
-		{Title: "Description", Width: 30},
-	}
-	mapper := func(r netbox.VRF) table.Row {
-		return table.Row{
-			strconv.Itoa(r.ID),
-			r.Name,
-			r.RD,
-			nestedName(r.Tenant),
-			r.Description,
-		}
-	}
+func NewVRFs(client *netbox.Client, resolve ColumnsResolver) View {
+	visible := resolve("vrfs")
+	cols, mapper := buildCols[netbox.VRF](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.VRF], error) {
 		listOpts := netbox.ListVRFsOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)

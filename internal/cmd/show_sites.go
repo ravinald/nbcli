@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
-	"github.com/ravinald/nbcli/internal/output"
 )
 
 // siteKeywords is the positional keyword set for `nbcli show sites`.
@@ -57,24 +54,7 @@ func newShowSitesCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := []output.Column{
-				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Site).ID) }},
-				{Header: "Name", Extract: func(r any) string { return r.(netbox.Site).Name }},
-				{Header: "Slug", Extract: func(r any) string { return r.(netbox.Site).Slug }},
-				{Header: "Status", Extract: func(r any) string { return r.(netbox.Site).Status.Label }},
-				{Header: "Region", Extract: func(r any) string {
-					if r.(netbox.Site).Region == nil {
-						return ""
-					}
-					return r.(netbox.Site).Region.Name
-				}},
-				{Header: "Tenant", Extract: func(r any) string {
-					if r.(netbox.Site).Tenant == nil {
-						return ""
-					}
-					return r.(netbox.Site).Tenant.Name
-				}},
-			}
+			cols := resolveColumns(cmd, "sites")
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
 			if fetchAll {

@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
-	"github.com/ravinald/nbcli/internal/output"
 )
 
 var vlanKeywords = append([]cmdutils.KeywordSpec{
@@ -52,36 +49,7 @@ func newShowVLANsCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cols := []output.Column{
-				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.VLAN).ID) }},
-				{Header: "VID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.VLAN).VID) }},
-				{Header: "Name", Extract: func(r any) string { return r.(netbox.VLAN).Name }},
-				{Header: "Site", Extract: func(r any) string {
-					if r.(netbox.VLAN).Site == nil {
-						return ""
-					}
-					return r.(netbox.VLAN).Site.Name
-				}},
-				{Header: "Group", Extract: func(r any) string {
-					if r.(netbox.VLAN).Group == nil {
-						return ""
-					}
-					return r.(netbox.VLAN).Group.Name
-				}},
-				{Header: "Status", Extract: func(r any) string { return r.(netbox.VLAN).Status.Label }},
-				{Header: "Role", Extract: func(r any) string {
-					if r.(netbox.VLAN).Role == nil {
-						return ""
-					}
-					return r.(netbox.VLAN).Role.Name
-				}},
-				{Header: "Tenant", Extract: func(r any) string {
-					if r.(netbox.VLAN).Tenant == nil {
-						return ""
-					}
-					return r.(netbox.VLAN).Tenant.Name
-				}},
-			}
+			cols := resolveColumns(cmd, "vlans")
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
 			if fetchAll {

@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
-	"github.com/ravinald/nbcli/internal/output"
 )
 
 // tenantKeywords is the positional keyword set for `nbcli show tenants`.
@@ -48,18 +45,7 @@ func newShowTenantsCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := []output.Column{
-				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Tenant).ID) }},
-				{Header: "Name", Extract: func(r any) string { return r.(netbox.Tenant).Name }},
-				{Header: "Slug", Extract: func(r any) string { return r.(netbox.Tenant).Slug }},
-				{Header: "Group", Extract: func(r any) string {
-					if r.(netbox.Tenant).Group == nil {
-						return ""
-					}
-					return r.(netbox.Tenant).Group.Name
-				}},
-				{Header: "Description", Extract: func(r any) string { return r.(netbox.Tenant).Description }},
-			}
+			cols := resolveColumns(cmd, "tenants")
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
 			if fetchAll {

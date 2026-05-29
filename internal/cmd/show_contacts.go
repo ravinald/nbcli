@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
-	"github.com/ravinald/nbcli/internal/output"
 )
 
 // contactKeywords is the positional keyword set for `nbcli show contacts`.
@@ -50,19 +47,7 @@ func newShowContactsCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := []output.Column{
-				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Contact).ID) }},
-				{Header: "Name", Extract: func(r any) string { return r.(netbox.Contact).Name }},
-				{Header: "Title", Extract: func(r any) string { return r.(netbox.Contact).Title }},
-				{Header: "Email", Extract: func(r any) string { return r.(netbox.Contact).Email }},
-				{Header: "Phone", Extract: func(r any) string { return r.(netbox.Contact).Phone }},
-				{Header: "Group", Extract: func(r any) string {
-					if r.(netbox.Contact).Group == nil {
-						return ""
-					}
-					return r.(netbox.Contact).Group.Name
-				}},
-			}
+			cols := resolveColumns(cmd, "contacts")
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
 			if fetchAll {

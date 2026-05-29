@@ -3,12 +3,38 @@ package cmd
 import (
 	"errors"
 	"iter"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/ravinald/nbcli/internal/columns"
 	"github.com/ravinald/nbcli/internal/netbox"
 	"github.com/ravinald/nbcli/internal/output"
 )
+
+// resolveColumns picks the column set for resource using (in priority order):
+// the --columns flag, the user's config.Columns[resource] override, and the
+// registry's Default-flagged columns. Adapts columns.Column to output.Column
+// so the existing renderers (table/json/yaml/tsv) just work.
+func resolveColumns(cmd *cobra.Command, resource string) []output.Column {
+	var override []string
+	if flag := cmd.Flags().Lookup("columns"); flag != nil && flag.Changed {
+		raw, _ := cmd.Flags().GetString("columns")
+		for _, n := range strings.Split(raw, ",") {
+			if n = strings.TrimSpace(n); n != "" {
+				override = append(override, n)
+			}
+		}
+	} else if cfg := configFromCtx(cmd.Context()); cfg.Columns != nil {
+		override = cfg.Columns[resource]
+	}
+	visible := columns.Resolve(resource, override)
+	out := make([]output.Column, len(visible))
+	for i, c := range visible {
+		out[i] = output.Column{Header: c.Header, Extract: c.Extract}
+	}
+	return out
+}
 
 // renderRows centralizes the boilerplate at the tail of every `show <resource>`
 // command: read the resolved format off config, build the renderer, write to

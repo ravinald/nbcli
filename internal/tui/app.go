@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/ravinald/nbcli/internal/columns"
 	"github.com/ravinald/nbcli/internal/netbox"
 	"github.com/ravinald/nbcli/internal/tui/views"
 )
@@ -81,11 +82,10 @@ type Model struct {
 	rightContentW, rightContentH int
 }
 
-// New constructs the root model with the given Netbox client.
-//
-// v0.1 wires real views for Tenants and Contacts; everything else is a
-// placeholder pane that says so.
-func New(client *netbox.Client) Model {
+// New constructs the root model with the given Netbox client and a column
+// override map (from config.Columns). overrides is nil-safe: missing
+// resources fall back to the registry's Default-flagged columns.
+func New(client *netbox.Client, overrides map[string][]string) Model {
 	sections := DefaultSections()
 	var flat []flatEntry
 	for si, s := range sections {
@@ -93,24 +93,27 @@ func New(client *netbox.Client) Model {
 			flat = append(flat, flatEntry{section: si, item: ii})
 		}
 	}
+	resolve := func(resource string) []columns.Column {
+		return columns.Resolve(resource, overrides[resource])
+	}
 	m := Model{
 		client:   client,
 		styles:   DefaultStyles(),
 		sections: sections,
 		flat:     flat,
 		views: map[string]views.View{
-			"Sites":            views.NewSites(client),
-			"Tenants":          views.NewTenants(client),
-			"Contacts":         views.NewContacts(client),
-			"Racks":            views.NewRacks(client),
-			"Devices":          views.NewDevices(client),
-			"Interfaces":       views.NewInterfaces(client),
-			"Prefixes":         views.NewPrefixes(client),
-			"IP Addresses":     views.NewIPAddresses(client),
-			"VLANs":            views.NewVLANs(client),
-			"VRFs":             views.NewVRFs(client),
-			"Virtual Machines": views.NewVMs(client),
-			"Clusters":         views.NewClusters(client),
+			"Sites":            views.NewSites(client, resolve),
+			"Tenants":          views.NewTenants(client, resolve),
+			"Contacts":         views.NewContacts(client, resolve),
+			"Racks":            views.NewRacks(client, resolve),
+			"Devices":          views.NewDevices(client, resolve),
+			"Interfaces":       views.NewInterfaces(client, resolve),
+			"Prefixes":         views.NewPrefixes(client, resolve),
+			"IP Addresses":     views.NewIPAddresses(client, resolve),
+			"VLANs":            views.NewVLANs(client, resolve),
+			"VRFs":             views.NewVRFs(client, resolve),
+			"Virtual Machines": views.NewVMs(client, resolve),
+			"Clusters":         views.NewClusters(client, resolve),
 		},
 		focused: LeftViewport,
 	}
@@ -413,8 +416,8 @@ func (m Model) renderMain() string {
 }
 
 // Run starts the bubbletea program until quit. Called from `nbcli tui`.
-func Run(client *netbox.Client) error {
-	p := tea.NewProgram(New(client), tea.WithAltScreen())
+func Run(client *netbox.Client, columnOverrides map[string][]string) error {
+	p := tea.NewProgram(New(client, columnOverrides), tea.WithAltScreen())
 	_, err := p.Run()
 	return err
 }

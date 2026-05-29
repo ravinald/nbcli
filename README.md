@@ -92,6 +92,25 @@ format: table          # implicit default is table on a TTY, json when piped
 timeout_seconds: 30
 insecure_skip_verify: false
 auth_scheme: v2        # v2 (default, Bearer header) or v1 (legacy, Token header)
+
+# Configurable columns (mirrors the web UI). Same config drives CLI tables
+# and the TUI. Resource key matches the API path segment.
+columns:
+  sites:        [id, name, status, region, tenant]
+  devices:      [id, name, type, site, rack, status, primary_ip4]
+  ip-addresses: [id, address, family, status, dns_name, tenant]
+```
+
+List the names available for a resource:
+
+```sh
+nbcli show sites --columns ?    # (not implemented yet — for now check internal/columns/)
+```
+
+Per-call override (CLI only):
+
+```sh
+nbcli show devices --columns id,name,primary_ip4,serial
 ```
 
 ### Token auth scheme (v1 vs v2)

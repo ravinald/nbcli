@@ -23,6 +23,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/ravinald/nbcli/internal/columns"
 	"github.com/ravinald/nbcli/internal/netbox"
 )
 
@@ -85,6 +86,11 @@ type FetchResult[T any] struct {
 	Rows  []T
 	Total int
 }
+
+// ColumnsResolver returns the visible columns for resource. Supplied by the
+// shell (tui.New) so view factories don't need to know about config — they
+// just call resolve("sites") and get whatever the user configured.
+type ColumnsResolver func(resource string) []columns.Column
 
 // FKRef is a parsed foreign-key reference. Built by DetailFKs when scanning
 // a struct's fields. Detail mode uses the slice index + 1 as the user-facing
@@ -217,15 +223,6 @@ func ErrorBlock(err error) string {
 
 // Hint renders muted help text (keybind hints, "first fetch can take...", etc.).
 func Hint(s string) string { return hintStyle.Render(s) }
-
-// nestedName returns the Name of a NestedRef, "" if nil. Used pervasively by
-// row mappers to flatten foreign-key references into table cells.
-func nestedName(n *netbox.NestedRef) string {
-	if n == nil {
-		return ""
-	}
-	return n.Name
-}
 
 // RenderDetail returns a key/value rendering of v with no cursor highlight.
 // Equivalent to RenderDetailCursor(v, -1); kept as the zero-arg API.

@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
-	"github.com/ravinald/nbcli/internal/output"
 )
 
 var vrfKeywords = append([]cmdutils.KeywordSpec{
@@ -43,18 +40,7 @@ func newShowVRFsCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cols := []output.Column{
-				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.VRF).ID) }},
-				{Header: "Name", Extract: func(r any) string { return r.(netbox.VRF).Name }},
-				{Header: "RD", Extract: func(r any) string { return r.(netbox.VRF).RD }},
-				{Header: "Tenant", Extract: func(r any) string {
-					if r.(netbox.VRF).Tenant == nil {
-						return ""
-					}
-					return r.(netbox.VRF).Tenant.Name
-				}},
-				{Header: "Description", Extract: func(r any) string { return r.(netbox.VRF).Description }},
-			}
+			cols := resolveColumns(cmd, "vrfs")
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
 			if fetchAll {

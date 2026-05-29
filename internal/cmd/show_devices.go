@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
-	"github.com/ravinald/nbcli/internal/output"
 )
 
 // deviceKeywords is the positional keyword set for `nbcli show devices`.
@@ -63,46 +60,7 @@ func newShowDevicesCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := []output.Column{
-				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Device).ID) }},
-				{Header: "Name", Extract: func(r any) string { return r.(netbox.Device).Name }},
-				{Header: "Type", Extract: func(r any) string {
-					d := r.(netbox.Device)
-					if d.DeviceType == nil {
-						return ""
-					}
-					mfr := ""
-					if d.DeviceType.Manufacturer != nil {
-						mfr = d.DeviceType.Manufacturer.Name + " "
-					}
-					return mfr + d.DeviceType.Model
-				}},
-				{Header: "Role", Extract: func(r any) string {
-					if r.(netbox.Device).Role == nil {
-						return ""
-					}
-					return r.(netbox.Device).Role.Name
-				}},
-				{Header: "Site", Extract: func(r any) string {
-					if r.(netbox.Device).Site == nil {
-						return ""
-					}
-					return r.(netbox.Device).Site.Name
-				}},
-				{Header: "Rack", Extract: func(r any) string {
-					if r.(netbox.Device).Rack == nil {
-						return ""
-					}
-					return r.(netbox.Device).Rack.Name
-				}},
-				{Header: "Status", Extract: func(r any) string { return r.(netbox.Device).Status.Label }},
-				{Header: "Tenant", Extract: func(r any) string {
-					if r.(netbox.Device).Tenant == nil {
-						return ""
-					}
-					return r.(netbox.Device).Tenant.Name
-				}},
-			}
+			cols := resolveColumns(cmd, "devices")
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
 			if fetchAll {

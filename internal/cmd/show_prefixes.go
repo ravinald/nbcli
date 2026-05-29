@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
-	"github.com/ravinald/nbcli/internal/output"
 )
 
 var prefixKeywords = append([]cmdutils.KeywordSpec{
@@ -54,36 +51,7 @@ func newShowPrefixesCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cols := []output.Column{
-				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Prefix).ID) }},
-				{Header: "Prefix", Extract: func(r any) string { return r.(netbox.Prefix).Prefix }},
-				{Header: "Family", Extract: func(r any) string { return r.(netbox.Prefix).Family.Label }},
-				{Header: "VRF", Extract: func(r any) string {
-					if r.(netbox.Prefix).VRF == nil {
-						return ""
-					}
-					return r.(netbox.Prefix).VRF.Name
-				}},
-				{Header: "Site", Extract: func(r any) string {
-					if r.(netbox.Prefix).Site == nil {
-						return ""
-					}
-					return r.(netbox.Prefix).Site.Name
-				}},
-				{Header: "Role", Extract: func(r any) string {
-					if r.(netbox.Prefix).Role == nil {
-						return ""
-					}
-					return r.(netbox.Prefix).Role.Name
-				}},
-				{Header: "Status", Extract: func(r any) string { return r.(netbox.Prefix).Status.Label }},
-				{Header: "Tenant", Extract: func(r any) string {
-					if r.(netbox.Prefix).Tenant == nil {
-						return ""
-					}
-					return r.(netbox.Prefix).Tenant.Name
-				}},
-			}
+			cols := resolveColumns(cmd, "prefixes")
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
 			if fetchAll {

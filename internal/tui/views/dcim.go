@@ -5,33 +5,14 @@ package views
 
 import (
 	"context"
-	"strconv"
-
-	"github.com/charmbracelet/bubbles/table"
 
 	"github.com/ravinald/nbcli/internal/netbox"
 )
 
 // NewSites returns a View listing /dcim/sites/.
-func NewSites(client *netbox.Client) View {
-	cols := []table.Column{
-		{Title: "ID", Width: 6},
-		{Title: "Name", Width: 22},
-		{Title: "Slug", Width: 22},
-		{Title: "Status", Width: 12},
-		{Title: "Region", Width: 16},
-		{Title: "Tenant", Width: 16},
-	}
-	mapper := func(s netbox.Site) table.Row {
-		return table.Row{
-			strconv.Itoa(s.ID),
-			s.Name,
-			s.Slug,
-			s.Status.Label,
-			nestedName(s.Region),
-			nestedName(s.Tenant),
-		}
-	}
+func NewSites(client *netbox.Client, resolve ColumnsResolver) View {
+	visible := resolve("sites")
+	cols, mapper := buildCols[netbox.Site](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Site], error) {
 		listOpts := netbox.ListSitesOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -45,27 +26,9 @@ func NewSites(client *netbox.Client) View {
 }
 
 // NewRacks returns a View listing /dcim/racks/.
-func NewRacks(client *netbox.Client) View {
-	cols := []table.Column{
-		{Title: "ID", Width: 6},
-		{Title: "Name", Width: 18},
-		{Title: "Site", Width: 14},
-		{Title: "Location", Width: 18},
-		{Title: "Role", Width: 14},
-		{Title: "Status", Width: 12},
-		{Title: "U", Width: 4},
-	}
-	mapper := func(r netbox.Rack) table.Row {
-		return table.Row{
-			strconv.Itoa(r.ID),
-			r.Name,
-			nestedName(r.Site),
-			nestedName(r.Location),
-			nestedName(r.Role),
-			r.Status.Label,
-			strconv.Itoa(r.UHeight),
-		}
-	}
+func NewRacks(client *netbox.Client, resolve ColumnsResolver) View {
+	visible := resolve("racks")
+	cols, mapper := buildCols[netbox.Rack](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Rack], error) {
 		listOpts := netbox.ListRacksOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -79,32 +42,9 @@ func NewRacks(client *netbox.Client) View {
 }
 
 // NewDevices returns a View listing /dcim/devices/.
-func NewDevices(client *netbox.Client) View {
-	cols := []table.Column{
-		{Title: "ID", Width: 6},
-		{Title: "Name", Width: 22},
-		{Title: "Type", Width: 22},
-		{Title: "Site", Width: 14},
-		{Title: "Rack", Width: 12},
-		{Title: "Status", Width: 12},
-	}
-	mapper := func(d netbox.Device) table.Row {
-		devType := ""
-		if d.DeviceType != nil {
-			if d.DeviceType.Manufacturer != nil {
-				devType = d.DeviceType.Manufacturer.Name + " "
-			}
-			devType += d.DeviceType.Model
-		}
-		return table.Row{
-			strconv.Itoa(d.ID),
-			d.Name,
-			devType,
-			nestedName(d.Site),
-			nestedName(d.Rack),
-			d.Status.Label,
-		}
-	}
+func NewDevices(client *netbox.Client, resolve ColumnsResolver) View {
+	visible := resolve("devices")
+	cols, mapper := buildCols[netbox.Device](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Device], error) {
 		listOpts := netbox.ListDevicesOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -117,28 +57,10 @@ func NewDevices(client *netbox.Client) View {
 	return newBaseView[netbox.Device]("Devices", cols, mapper, func(d netbox.Device) int { return d.ID }, fetcher)
 }
 
-// NewInterfaces returns a View listing /dcim/interfaces/. Interfaces are
-// often hundreds of thousands across a fleet; pagination keeps the page
-// load bounded.
-func NewInterfaces(client *netbox.Client) View {
-	cols := []table.Column{
-		{Title: "ID", Width: 6},
-		{Title: "Device", Width: 20},
-		{Title: "Name", Width: 18},
-		{Title: "Type", Width: 18},
-		{Title: "Enabled", Width: 8},
-		{Title: "MAC", Width: 18},
-	}
-	mapper := func(i netbox.Interface) table.Row {
-		return table.Row{
-			strconv.Itoa(i.ID),
-			nestedName(i.Device),
-			i.Name,
-			i.Type.Label,
-			strconv.FormatBool(i.Enabled),
-			i.MACAddress,
-		}
-	}
+// NewInterfaces returns a View listing /dcim/interfaces/.
+func NewInterfaces(client *netbox.Client, resolve ColumnsResolver) View {
+	visible := resolve("interfaces")
+	cols, mapper := buildCols[netbox.Interface](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Interface], error) {
 		listOpts := netbox.ListInterfacesOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)

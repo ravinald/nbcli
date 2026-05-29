@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
-	"github.com/ravinald/nbcli/internal/output"
 )
 
 var vmKeywords = append([]cmdutils.KeywordSpec{
@@ -51,47 +48,7 @@ func newShowVMsCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cols := []output.Column{
-				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.VirtualMachine).ID) }},
-				{Header: "Name", Extract: func(r any) string { return r.(netbox.VirtualMachine).Name }},
-				{Header: "Status", Extract: func(r any) string { return r.(netbox.VirtualMachine).Status.Label }},
-				{Header: "Cluster", Extract: func(r any) string {
-					if r.(netbox.VirtualMachine).Cluster == nil {
-						return ""
-					}
-					return r.(netbox.VirtualMachine).Cluster.Name
-				}},
-				{Header: "Site", Extract: func(r any) string {
-					if r.(netbox.VirtualMachine).Site == nil {
-						return ""
-					}
-					return r.(netbox.VirtualMachine).Site.Name
-				}},
-				{Header: "vCPUs", Extract: func(r any) string {
-					if c := r.(netbox.VirtualMachine).VCPUs; c != nil {
-						return strconv.FormatFloat(*c, 'f', -1, 64)
-					}
-					return ""
-				}},
-				{Header: "MemMB", Extract: func(r any) string {
-					if m := r.(netbox.VirtualMachine).Memory; m != nil {
-						return strconv.Itoa(*m)
-					}
-					return ""
-				}},
-				{Header: "DiskGB", Extract: func(r any) string {
-					if d := r.(netbox.VirtualMachine).Disk; d != nil {
-						return strconv.Itoa(*d)
-					}
-					return ""
-				}},
-				{Header: "Tenant", Extract: func(r any) string {
-					if r.(netbox.VirtualMachine).Tenant == nil {
-						return ""
-					}
-					return r.(netbox.VirtualMachine).Tenant.Name
-				}},
-			}
+			cols := resolveColumns(cmd, "virtual-machines")
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
 			if fetchAll {

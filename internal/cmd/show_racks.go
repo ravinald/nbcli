@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"strconv"
-
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
-	"github.com/ravinald/nbcli/internal/output"
 )
 
 // rackKeywords is the positional keyword set for `nbcli show racks`.
@@ -54,36 +51,7 @@ func newShowRacksCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := []output.Column{
-				{Header: "ID", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Rack).ID) }},
-				{Header: "Name", Extract: func(r any) string { return r.(netbox.Rack).Name }},
-				{Header: "Site", Extract: func(r any) string {
-					if r.(netbox.Rack).Site == nil {
-						return ""
-					}
-					return r.(netbox.Rack).Site.Name
-				}},
-				{Header: "Location", Extract: func(r any) string {
-					if r.(netbox.Rack).Location == nil {
-						return ""
-					}
-					return r.(netbox.Rack).Location.Name
-				}},
-				{Header: "Role", Extract: func(r any) string {
-					if r.(netbox.Rack).Role == nil {
-						return ""
-					}
-					return r.(netbox.Rack).Role.Name
-				}},
-				{Header: "Status", Extract: func(r any) string { return r.(netbox.Rack).Status.Label }},
-				{Header: "U", Extract: func(r any) string { return strconv.Itoa(r.(netbox.Rack).UHeight) }},
-				{Header: "Tenant", Extract: func(r any) string {
-					if r.(netbox.Rack).Tenant == nil {
-						return ""
-					}
-					return r.(netbox.Rack).Tenant.Name
-				}},
-			}
+			cols := resolveColumns(cmd, "racks")
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
 			if fetchAll {

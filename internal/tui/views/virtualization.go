@@ -5,43 +5,14 @@ package views
 
 import (
 	"context"
-	"strconv"
-
-	"github.com/charmbracelet/bubbles/table"
 
 	"github.com/ravinald/nbcli/internal/netbox"
 )
 
 // NewVMs returns a View listing /virtualization/virtual-machines/.
-func NewVMs(client *netbox.Client) View {
-	cols := []table.Column{
-		{Title: "ID", Width: 6},
-		{Title: "Name", Width: 22},
-		{Title: "Status", Width: 12},
-		{Title: "Cluster", Width: 16},
-		{Title: "Site", Width: 14},
-		{Title: "vCPUs", Width: 7},
-		{Title: "MemMB", Width: 8},
-	}
-	mapper := func(vm netbox.VirtualMachine) table.Row {
-		vcpu := ""
-		if vm.VCPUs != nil {
-			vcpu = strconv.FormatFloat(*vm.VCPUs, 'f', -1, 64)
-		}
-		mem := ""
-		if vm.Memory != nil {
-			mem = strconv.Itoa(*vm.Memory)
-		}
-		return table.Row{
-			strconv.Itoa(vm.ID),
-			vm.Name,
-			vm.Status.Label,
-			nestedName(vm.Cluster),
-			nestedName(vm.Site),
-			vcpu,
-			mem,
-		}
-	}
+func NewVMs(client *netbox.Client, resolve ColumnsResolver) View {
+	visible := resolve("virtual-machines")
+	cols, mapper := buildCols[netbox.VirtualMachine](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.VirtualMachine], error) {
 		listOpts := netbox.ListVMsOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -55,27 +26,9 @@ func NewVMs(client *netbox.Client) View {
 }
 
 // NewClusters returns a View listing /virtualization/clusters/.
-func NewClusters(client *netbox.Client) View {
-	cols := []table.Column{
-		{Title: "ID", Width: 6},
-		{Title: "Name", Width: 22},
-		{Title: "Type", Width: 18},
-		{Title: "Group", Width: 16},
-		{Title: "Site", Width: 14},
-		{Title: "Status", Width: 12},
-		{Title: "VMs", Width: 6},
-	}
-	mapper := func(c netbox.Cluster) table.Row {
-		return table.Row{
-			strconv.Itoa(c.ID),
-			c.Name,
-			nestedName(c.Type),
-			nestedName(c.Group),
-			nestedName(c.Site),
-			c.Status.Label,
-			strconv.Itoa(c.VirtualMachineCount),
-		}
-	}
+func NewClusters(client *netbox.Client, resolve ColumnsResolver) View {
+	visible := resolve("clusters")
+	cols, mapper := buildCols[netbox.Cluster](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Cluster], error) {
 		listOpts := netbox.ListClustersOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)

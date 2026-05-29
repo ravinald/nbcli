@@ -70,6 +70,12 @@ type Config struct {
 	// Netbox docs: https://netboxlabs.com/docs/netbox/integrations/rest-api/#v1-and-v2-tokens
 	AuthScheme string `mapstructure:"auth_scheme" yaml:"auth_scheme,omitempty"`
 
+	// Columns maps a resource name (e.g. "sites", "devices") to the column
+	// names to display, in order. Available column names come from the
+	// internal/columns registry. When a resource isn't listed, the registry's
+	// Default-flagged columns are used. Same config drives CLI and TUI.
+	Columns map[string][]string `mapstructure:"columns" yaml:"columns,omitempty"`
+
 	// ConfigFile is the resolved path of the config file that was loaded
 	// (empty if none was found).
 	ConfigFile string `mapstructure:"-" yaml:"-"`
@@ -120,8 +126,20 @@ func Load(flags *pflag.FlagSet, configFile, extraEnvFile string) (Config, error)
 	}
 
 	if flags != nil {
-		if err := v.BindPFlags(flags); err != nil {
-			return Config{}, fmt.Errorf("config: bind flags: %w", err)
+		// Bind every flag EXCEPT --columns. That flag is a comma-separated
+		// string while the config's `columns:` key is map[string][]string;
+		// binding it via viper conflates the two and unmarshal fails. The
+		// cmd-side resolveColumns helper reads --columns directly from the
+		// cobra flag set, so viper doesn't need to know about it.
+		var bindErr error
+		flags.VisitAll(func(f *pflag.Flag) {
+			if bindErr != nil || f.Name == "columns" {
+				return
+			}
+			bindErr = v.BindPFlag(f.Name, f)
+		})
+		if bindErr != nil {
+			return Config{}, fmt.Errorf("config: bind flags: %w", bindErr)
 		}
 	}
 
