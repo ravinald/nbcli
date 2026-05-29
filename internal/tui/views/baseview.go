@@ -156,20 +156,23 @@ func (b *baseView[T]) fetchCmd() tea.Cmd {
 func (b *baseView[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m := msg.(type) {
 	case SizeMsg:
-		// Vertical chrome: title + blank + table header + table border + status hint.
-		h := m.Height - 5
-		if h < 5 {
-			h = 5
+		// View chrome inside the right viewport's content area:
+		//   title (1) + title margin blank (1) + status hint (1) = 3 lines
+		// The table widget itself draws its column header + separator
+		// inside its allotted height, so visible data rows = tableArea - 2.
+		tableArea := m.Height - 3
+		if tableArea < 5 {
+			tableArea = 5
 		}
-		b.table.SetHeight(h)
+		b.table.SetHeight(tableArea)
 		if m.Width > 4 {
 			b.table.SetWidth(m.Width)
 		}
-		// Set the page size from the viewport on first sizing; later
-		// resizes don't change the page size mid-browse to avoid a
-		// disruptive refetch.
+		// Page size = visible data rows. Set once on first sizing; later
+		// resizes don't change page size mid-browse to avoid a disruptive
+		// refetch.
 		if b.limit == 0 {
-			b.limit = h
+			b.limit = tableArea - 2
 		}
 		return b, nil
 	case loadedMsg[T]:
