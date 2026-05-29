@@ -2,9 +2,11 @@ package netbox
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // NestedRef is the inline {id, url, display, slug, name} object Netbox returns
@@ -36,9 +38,41 @@ type Site struct {
 }
 
 // LabelValue is Netbox's enum shape: {value, label}.
+//
+// Netbox is inconsistent about whether "value" is a string or a number:
+// status/type enums use strings ("active", "10gbase-x-sfpp"), while IPAM
+// family uses an int (4, 6). LabelValue normalizes both into a single
+// string field via a custom unmarshaler so callers always read
+// `lv.Value` as a string regardless of how the API delivered it.
 type LabelValue struct {
 	Value string `json:"value"`
 	Label string `json:"label"`
+}
+
+// UnmarshalJSON accepts either {"value": "x", ...} or {"value": 4, ...}
+// and stuffs the result into Value as a string ("x" or "4").
+func (lv *LabelValue) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Value json.RawMessage `json:"value"`
+		Label string          `json:"label"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	lv.Label = raw.Label
+	switch {
+	case len(raw.Value) == 0, string(raw.Value) == "null":
+		lv.Value = ""
+	case raw.Value[0] == '"':
+		if err := json.Unmarshal(raw.Value, &lv.Value); err != nil {
+			return err
+		}
+	default:
+		// Number, bool, or anything else: store the raw token. Trim outer
+		// whitespace so {"value":  4} → "4" rather than "  4".
+		lv.Value = strings.TrimSpace(string(raw.Value))
+	}
+	return nil
 }
 
 // ListSitesOptions filters the DCIM /sites/ list endpoint.
