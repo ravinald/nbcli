@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
@@ -46,15 +45,6 @@ type Client struct {
 	baseURL    *url.URL
 	authHeader string // pre-built "Bearer <tok>" or "Token <tok>"
 	httpClient *http.Client
-
-	// searchBackend selects the transport for `search all`. Set once in New()
-	// from Options.SearchBackend; never mutated after.
-	searchBackend SearchBackend
-
-	// searchUsesREST is a runtime cache for SearchAuto mode: set true after
-	// the first GraphQL 404 so subsequent Search calls skip the probe.
-	// Ignored for SearchGraphQL (always GraphQL) and SearchREST (always REST).
-	searchUsesREST atomic.Bool
 }
 
 // Options configures a Client.
@@ -68,10 +58,6 @@ type Options struct {
 
 	// AuthScheme selects the Authorization header style. Empty defaults to v2.
 	AuthScheme AuthScheme
-
-	// SearchBackend chooses the `search all` transport. Empty defaults to
-	// SearchAuto (probe GraphQL, fall back to REST fan-out on 404).
-	SearchBackend SearchBackend
 
 	// Timeout caps a single request including body read. Zero = 30s default.
 	Timeout time.Duration
@@ -113,25 +99,14 @@ func New(opts Options) (*Client, error) {
 		return nil, err
 	}
 
-	backend, err := normalizeSearchBackend(opts.SearchBackend)
-	if err != nil {
-		return nil, err
-	}
-
-	c := &Client{
+	return &Client{
 		baseURL:    u,
 		authHeader: authHeader,
 		httpClient: &http.Client{
 			Timeout:   timeout,
 			Transport: transport,
 		},
-		searchBackend: backend,
-	}
-	// SearchREST: pre-seed the cache so we never probe GraphQL.
-	if backend == SearchREST {
-		c.searchUsesREST.Store(true)
-	}
-	return c, nil
+	}, nil
 }
 
 // V2Prefix is the wire-format prefix every v2 Netbox token carries

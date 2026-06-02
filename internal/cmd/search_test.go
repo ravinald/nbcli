@@ -2,7 +2,6 @@ package cmd_test
 
 import (
 	"encoding/json"
-	stdio "io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -64,27 +63,26 @@ func TestSearch_Validator_UnknownTrailingKeyword(t *testing.T) {
 // ?q=<key>. The fake server below verifies path + query then returns a
 // minimal response the renderer can format.
 
-func TestSearch_AllUsesGraphQL(t *testing.T) {
+func TestSearch_AllFansOutAcrossTypedEndpoints(t *testing.T) {
 	isolateEnv(t)
-	var seenPath, seenBody atomic.Value
+	var seenQ atomic.Value
 	var hits atomic.Int32
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		seenPath.Store(r.URL.Path)
-		body, _ := stdio.ReadAll(r.Body)
-		seenBody.Store(string(body))
-		hits.Add(1)
-
-		// Return one canned row per type so the aggregate covers everything.
-		data := map[string]any{}
-		for _, st := range netbox.SearchTypes {
-			data[st.ListField] = []map[string]any{
-				{"id": "1", "display": st.Dotted + "-hit"},
-			}
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
-	}))
+	mux := http.NewServeMux()
+	for _, ep := range netbox.SearchTypes {
+		mux.HandleFunc(ep.RESTPath, func(w http.ResponseWriter, r *http.Request) {
+			seenQ.Store(r.URL.Query().Get("q"))
+			hits.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			obj, _ := json.Marshal(map[string]any{
+				"id": 1, "display": ep.Dotted + "-hit", "url": ep.RESTPath + "1/",
+			})
+			_ = json.NewEncoder(w).Encode(netbox.Page[json.RawMessage]{
+				Count: 1, Results: []json.RawMessage{obj},
+			})
+		})
+	}
+	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
 	t.Setenv("NBCLI_URL", srv.URL)
@@ -94,11 +92,9 @@ func TestSearch_AllUsesGraphQL(t *testing.T) {
 	io, out, errb := makeIO()
 	code := cmd.Execute([]string{"search", "all", "hq"}, io)
 	require.Equalf(t, 0, code, "stderr=%s", errb.String())
-	assert.Equal(t, int32(1), hits.Load(), "one request, not per-endpoint fan-out")
-	assert.Equal(t, "/graphql/", seenPath.Load())
-	body := seenBody.Load().(string)
-	assert.Contains(t, body, `"q":"hq"`, "query variable propagates")
-	// Output should reference at least two distinct types from the batched response.
+	assert.Equal(t, "hq", seenQ.Load(), "?q= propagates to every endpoint")
+	assert.Equal(t, len(netbox.SearchTypes), int(hits.Load()),
+		"every endpoint in SearchTypes should receive a request")
 	rendered := out.String()
 	assert.Contains(t, rendered, "dcim.site")
 	assert.Contains(t, rendered, "ipam.ipaddress")

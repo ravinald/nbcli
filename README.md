@@ -16,7 +16,7 @@ Working surface:
 - `nbcli show sites [keyword value]...` — list DCIM sites
 - `nbcli show tenants [keyword value]...` — list tenants
 - `nbcli show contacts [keyword value]...` — list contacts
-- `nbcli search [all|<module>] <key> [limit value] [pager]` — free-text search (per-module via `?q=`; `all` tries GraphQL, auto-falls-back to REST fan-out when GraphQL is disabled)
+- `nbcli search [all|<module>] <key> [limit value] [pager]` — free-text search (per-module via `?q=`; `all` fans out across every typed endpoint)
 - `nbcli tui` — bubbletea shell; **Tenants** and **Contacts** items render live tables; other items are placeholders
 - `nbcli plugin passthrough <name> <subpath> [key value ...]` — raw forward to `/api/plugins/<name>/...`
 - `nbcli plugin list` — show compiled-in named plugins
@@ -56,7 +56,7 @@ nbcli search all hq                   # cross-resource via /api/search/
 nbcli search all hq pager             # interactive pager
 ```
 
-`search <module> <key>` uses the same column set as `show <module>` (REST `?q=`). `search all <key>` prefers Netbox's `/graphql/` for a batched single-request cross-resource query; when GraphQL is disabled on the instance (returns 404), it auto-falls-back to a parallel REST fan-out across the same resource set. Control with `search_backend: auto|graphql|rest` in `config.yaml` or `NBCLI_SEARCH_BACKEND=...`. Either backend renders results in a four-column view:
+`search <module> <key>` uses the same column set as `show <module>` (REST `?q=`). `search all <key>` fans out across every typed REST list endpoint in parallel with `?q=<key>`, then merges the hits. (Netbox 4.x GraphQL doesn't expose a `q` free-text filter — only per-field operators like `i_contains` — so REST `?q=` is the only path to true cross-field search.) Results render in a four-column view:
 
 ```
 TYPE              FIELD         VALUE         DISPLAY
@@ -117,7 +117,6 @@ format: table          # implicit default is table on a TTY, json when piped
 timeout_seconds: 30
 insecure_skip_verify: false
 auth_scheme: v2        # v2 (default, Bearer header) or v1 (legacy, Token header)
-search_backend: auto   # auto (probe + fallback) | graphql (always) | rest (skip probe)
 
 # Configurable columns (mirrors the web UI). Same config drives CLI tables
 # and the TUI. Resource key matches the API path segment.
