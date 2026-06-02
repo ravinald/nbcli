@@ -19,7 +19,7 @@ jobs:
     name: goreleaser
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           # GoReleaser needs the full history + tags to compute changelog.
           fetch-depth: 0
