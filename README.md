@@ -1,5 +1,10 @@
 # nbcli
 
+[![ci](https://github.com/ravinald/nbcli/actions/workflows/ci.yml/badge.svg)](https://github.com/ravinald/nbcli/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ravinald/nbcli)](https://goreportcard.com/report/github.com/ravinald/nbcli)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ravinald/nbcli.svg)](https://pkg.go.dev/github.com/ravinald/nbcli)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 Modern CLI + TUI for Netbox.
 
 `nbcli show <resource>` for quick or machine-readable queries. `nbcli tui` for a full-screen browser that mirrors the Netbox web UI.
@@ -223,4 +228,4 @@ internal/version/         # ldflags-baked build metadata
 
 ## License
 
-TBD.
+Apache 2.0 — see [LICENSE](LICENSE). Contributions accepted under the same license; see [NOTICE](NOTICE) for attribution.
