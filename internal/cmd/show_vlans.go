@@ -19,7 +19,7 @@ var vlanKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "status", Description: "status value",
 		Values: []string{"active", "reserved", "deprecated"}},
 	{Name: "tenant", Description: "tenant slug"},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 func newShowVLANsCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -54,7 +54,7 @@ func newShowVLANsCmd(io IO) *cobra.Command {
 			}
 			cols := resolveColumns(cmd, "vlans")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "VLANs", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit

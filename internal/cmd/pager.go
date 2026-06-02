@@ -5,8 +5,6 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/spf13/cobra"
-
 	"github.com/ravinald/nbcli/internal/output"
 	"github.com/ravinald/nbcli/internal/pager"
 )
@@ -19,11 +17,11 @@ import (
 func runPager(io IO, title string, cols []output.Column, fetch pager.Fetcher) error {
 	stdout, ok := io.Out.(*os.File)
 	if !ok {
-		return errors.New("pager: --interactive requires the real os.Stdout (got an in-memory writer)")
+		return errors.New("pager: requires the real os.Stdout (got an in-memory writer)")
 	}
 	stdin, ok := io.In.(*os.File)
 	if !ok {
-		return errors.New("pager: --interactive requires the real os.Stdin (got an in-memory reader)")
+		return errors.New("pager: requires the real os.Stdin (got an in-memory reader)")
 	}
 	return pager.Run(pager.Config{
 		Title:   title,
@@ -31,14 +29,6 @@ func runPager(io IO, title string, cols []output.Column, fetch pager.Fetcher) er
 		Out:     stdout,
 		In:      stdin,
 	}, fetch)
-}
-
-// interactiveFlag returns true when --interactive / -i is set on cmd. Lookup
-// goes through cobra's inherited-flags machinery so the flag can be declared
-// once on the root command and reach every show subcommand.
-func interactiveFlag(cmd *cobra.Command) bool {
-	v, _ := cmd.Flags().GetBool("interactive")
-	return v
 }
 
 // applyPagerQuery sets the search query into the typed list options' Extra
