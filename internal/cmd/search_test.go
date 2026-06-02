@@ -63,22 +63,28 @@ func TestSearch_Validator_UnknownTrailingKeyword(t *testing.T) {
 // ?q=<key>. The fake server below verifies path + query then returns a
 // minimal response the renderer can format.
 
-func TestSearch_AllHitsSearchEndpoint(t *testing.T) {
+func TestSearch_AllFansOutAcrossTypedEndpoints(t *testing.T) {
 	isolateEnv(t)
-	var seenPath, seenQ atomic.Value
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		seenPath.Store(r.URL.Path)
-		seenQ.Store(r.URL.Query().Get("q"))
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(netbox.Page[netbox.SearchResult]{
-			Count: 1,
-			Results: []netbox.SearchResult{
-				{Type: "dcim.site", Field: "name", Value: "hq",
-					Object: json.RawMessage(`{"id":1,"display":"HQ","url":"/api/dcim/sites/1/"}`)},
-			},
+	var seenQ atomic.Value
+	var hits atomic.Int32
+
+	mux := http.NewServeMux()
+	for _, ep := range netbox.SearchEndpoints {
+		mux.HandleFunc(ep.Path, func(w http.ResponseWriter, r *http.Request) {
+			seenQ.Store(r.URL.Query().Get("q"))
+			hits.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			obj, _ := json.Marshal(map[string]any{
+				"id": 1, "display": ep.Type + "-hit", "url": ep.Path + "1/",
+			})
+			_ = json.NewEncoder(w).Encode(netbox.Page[json.RawMessage]{
+				Count: 1, Results: []json.RawMessage{obj},
+			})
 		})
-	}))
+	}
+	srv := httptest.NewServer(mux)
 	defer srv.Close()
+
 	t.Setenv("NBCLI_URL", srv.URL)
 	t.Setenv("NBCLI_TOKEN", "nbt_a.b")
 	t.Setenv("NBCLI_FORMAT", "json")
@@ -86,11 +92,13 @@ func TestSearch_AllHitsSearchEndpoint(t *testing.T) {
 	io, out, errb := makeIO()
 	code := cmd.Execute([]string{"search", "all", "hq"}, io)
 	require.Equalf(t, 0, code, "stderr=%s", errb.String())
-	assert.Equal(t, "/api/search/", seenPath.Load())
-	assert.Equal(t, "hq", seenQ.Load())
-	// Output is the JSON renderer's view of our one row.
-	assert.Contains(t, out.String(), "dcim.site")
-	assert.Contains(t, out.String(), "hq")
+	assert.Equal(t, "hq", seenQ.Load(), "?q= propagates to every endpoint")
+	assert.Equal(t, len(netbox.SearchEndpoints), int(hits.Load()),
+		"every endpoint in SearchEndpoints should receive a request")
+	// Aggregate contains rows from multiple types.
+	body := out.String()
+	assert.Contains(t, body, "dcim.site")
+	assert.Contains(t, body, "ipam.ipaddress")
 }
 
 func TestSearch_SitesHitsSitesEndpointWithQ(t *testing.T) {
