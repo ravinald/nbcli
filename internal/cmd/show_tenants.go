@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
+	"github.com/ravinald/nbcli/internal/pager"
 )
 
 // tenantKeywords is the positional keyword set for `nbcli show tenants`.
@@ -46,8 +49,21 @@ func newShowTenantsCmd(io IO) *cobra.Command {
 			}
 
 			cols := resolveColumns(cmd, "tenants")
-			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
+			if interactiveFlag(cmd) {
+				return runPager(io, "Tenants", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
+					listOpts := opts
+					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit
+					applyPagerQuery(&listOpts.Extra, po.Query)
+					page, err := client.ListTenants(ctx, listOpts)
+					if err != nil {
+						return pager.FetchResult{}, err
+					}
+					return pager.FetchResult{Rows: page.Results, Total: page.Count}, nil
+				})
+			}
+
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
 				return renderStreaming[netbox.Tenant](cmd, io, client.TenantsFetcher(opts), iterOpts, cols)
 			}

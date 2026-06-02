@@ -74,6 +74,7 @@ func NewRootCmd(io IO) *cobra.Command {
 	root.PersistentFlags().BoolVar(&opts.insecure, "insecure", false, "skip TLS cert verification (dangerous; dev only)")
 	root.PersistentFlags().StringVar(&opts.authScheme, "auth-scheme", "", "Netbox token auth: v2 (default, Bearer) or v1 (legacy, Token)")
 	root.PersistentFlags().String("columns", "", "comma-separated column names (e.g. id,name,status) — overrides config.yaml")
+	root.PersistentFlags().BoolP("interactive", "i", false, "open the less-like pager (table output only; requires a TTY)")
 	root.PersistentFlags().BoolVarP(&opts.verbose, "verbose", "v", false, "verbose logging to stderr")
 
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {

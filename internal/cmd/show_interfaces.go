@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
+	"github.com/ravinald/nbcli/internal/pager"
 )
 
 // interfaceKeywords is the positional keyword set for `nbcli show interfaces`.
@@ -70,8 +72,21 @@ func newShowInterfacesCmd(io IO) *cobra.Command {
 			}
 
 			cols := resolveColumns(cmd, "interfaces")
-			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
+			if interactiveFlag(cmd) {
+				return runPager(io, "Interfaces", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
+					listOpts := opts
+					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit
+					applyPagerQuery(&listOpts.Extra, po.Query)
+					page, err := client.ListInterfaces(ctx, listOpts)
+					if err != nil {
+						return pager.FetchResult{}, err
+					}
+					return pager.FetchResult{Rows: page.Results, Total: page.Count}, nil
+				})
+			}
+
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
 				return renderStreaming[netbox.Interface](cmd, io, client.InterfacesFetcher(opts), iterOpts, cols)
 			}
