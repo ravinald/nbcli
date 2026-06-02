@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 
 	"github.com/ravinald/nbcli/internal/cmdutils"
 	"github.com/ravinald/nbcli/internal/netbox"
+	"github.com/ravinald/nbcli/internal/pager"
 )
 
 var prefixKeywords = append([]cmdutils.KeywordSpec{
@@ -52,8 +55,21 @@ func newShowPrefixesCmd(io IO) *cobra.Command {
 				return err
 			}
 			cols := resolveColumns(cmd, "prefixes")
-			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 
+			if interactiveFlag(cmd) {
+				return runPager(io, "Prefixes", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
+					listOpts := opts
+					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit
+					applyPagerQuery(&listOpts.Extra, po.Query)
+					page, err := client.ListPrefixes(ctx, listOpts)
+					if err != nil {
+						return pager.FetchResult{}, err
+					}
+					return pager.FetchResult{Rows: page.Results, Total: page.Count}, nil
+				})
+			}
+
+			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
 				return renderStreaming[netbox.Prefix](cmd, io, client.PrefixesFetcher(opts), iterOpts, cols)
 			}
