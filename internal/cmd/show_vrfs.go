@@ -14,7 +14,7 @@ var vrfKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "name", Description: "exact VRF name"},
 	{Name: "rd", Description: "route distinguisher"},
 	{Name: "tenant", Description: "tenant slug"},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 func newShowVRFsCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -45,7 +45,7 @@ func newShowVRFsCmd(io IO) *cobra.Command {
 			}
 			cols := resolveColumns(cmd, "vrfs")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "VRFs", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit

@@ -16,7 +16,7 @@ var contactKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "email", Description: "email address"},
 	{Name: "phone", Description: "phone number"},
 	{Name: "group", Description: "contact group slug"},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 func newShowContactsCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -52,7 +52,7 @@ func newShowContactsCmd(io IO) *cobra.Command {
 
 			cols := resolveColumns(cmd, "contacts")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "Contacts", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit

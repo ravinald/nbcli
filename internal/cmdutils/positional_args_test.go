@@ -14,6 +14,7 @@ var testSpec = []KeywordSpec{
 	{Name: "status", Values: []string{"active", "planned", "decommissioning"}},
 	{Name: "region"},
 	{Name: "limit"},
+	{Name: "pager", NoValue: true, Description: "interactive pager"},
 }
 
 func TestParseShowArgs_Empty(t *testing.T) {
@@ -34,11 +35,36 @@ func TestParseShowArgs_PairsAnyOrder(t *testing.T) {
 	assert.Equal(t, "active", a["status"])
 }
 
-func TestParseShowArgs_OddArgcFails(t *testing.T) {
+func TestParseShowArgs_ValueKeywordMissingValue(t *testing.T) {
 	t.Parallel()
 	_, err := ParseShowArgs([]string{"name", "hq", "status"}, testSpec)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "keyword/value pairs")
+	assert.Contains(t, err.Error(), `keyword "status" expects a value`)
+}
+
+func TestParseShowArgs_SwitchKeyword(t *testing.T) {
+	t.Parallel()
+	out, err := ParseShowArgs([]string{"name", "hq", "pager"}, testSpec)
+	require.NoError(t, err)
+	assert.Equal(t, "hq", out["name"])
+	assert.Equal(t, "true", out["pager"])
+}
+
+func TestParseShowArgs_SwitchInterleaved(t *testing.T) {
+	t.Parallel()
+	// pager (switch) can appear anywhere in the arg stream.
+	out, err := ParseShowArgs([]string{"pager", "status", "active", "name", "hq"}, testSpec)
+	require.NoError(t, err)
+	assert.Equal(t, "true", out["pager"])
+	assert.Equal(t, "active", out["status"])
+	assert.Equal(t, "hq", out["name"])
+}
+
+func TestParseShowArgs_SwitchDuplicate(t *testing.T) {
+	t.Parallel()
+	_, err := ParseShowArgs([]string{"pager", "pager"}, testSpec)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `duplicate keyword "pager"`)
 }
 
 func TestParseShowArgs_UnknownKeyword(t *testing.T) {
@@ -73,8 +99,15 @@ func TestValidator_BlocksRunE(t *testing.T) {
 func TestUsageLine_Stable(t *testing.T) {
 	t.Parallel()
 	got := UsageLine(testSpec)
-	// Sorted alphabetically.
-	assert.Equal(t, "[limit|name|region|status <value>]...", got)
+	// Value-taking keywords first, switches segregated, both alphabetical.
+	assert.Equal(t, "[limit|name|region|status <value>]... [pager]...", got)
+}
+
+func TestHelpTable_TagsSwitches(t *testing.T) {
+	t.Parallel()
+	out := HelpTable(testSpec)
+	assert.Contains(t, out, "pager")
+	assert.Contains(t, out, "(switch)")
 }
 
 func TestHelpTable_IncludesEveryKeyword(t *testing.T) {
@@ -91,9 +124,9 @@ func TestCompletion_KeywordsThenValuesThenUnused(t *testing.T) {
 
 	// No args yet → all keywords.
 	kw, _ := fn(nil, nil, "")
-	assert.ElementsMatch(t, []string{"name", "status", "region", "limit"}, kw)
+	assert.ElementsMatch(t, []string{"name", "status", "region", "limit", "pager"}, kw)
 
-	// One keyword typed → suggest its static values.
+	// One value-taking keyword typed → suggest its static values.
 	vals, _ := fn(nil, []string{"status"}, "")
 	assert.Equal(t, []string{"active", "planned", "decommissioning"}, vals)
 
@@ -105,4 +138,17 @@ func TestCompletion_KeywordsThenValuesThenUnused(t *testing.T) {
 	next, _ := fn(nil, []string{"name", "hq"}, "")
 	assert.NotContains(t, strings.Join(next, ","), "name")
 	assert.Contains(t, strings.Join(next, ","), "status")
+}
+
+func TestCompletion_SwitchAdvancesOneSlot(t *testing.T) {
+	t.Parallel()
+	fn := CompletionFunc(testSpec)
+
+	// After a switch, we're at a keyword position again — not stuck waiting
+	// for a value that doesn't exist.
+	next, _ := fn(nil, []string{"pager"}, "")
+	joined := strings.Join(next, ",")
+	assert.Contains(t, joined, "name")
+	assert.Contains(t, joined, "status")
+	assert.NotContains(t, joined, "pager")
 }

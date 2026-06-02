@@ -174,18 +174,55 @@ The response is rendered as JSON (or YAML if you pass `--format yaml`). `--metho
 
 ## Shell completion
 
-cobra generates completion for bash, zsh, fish, and powershell. Positional keywords (`status active region us-west …`) get completed too.
+cobra generates the completion script; `cmdutils.CompletionFunc` adds positional-keyword awareness on top. After installing, `TAB` completes:
+
+- subcommands (`nbcli sh<TAB>` → `show`)
+- resources (`nbcli show <TAB>` → `sites devices racks …`)
+- positional keywords per resource, with already-typed ones filtered out (`nbcli show sites <TAB>` → `name slug status region tenant limit offset pager`)
+- static value enums (`nbcli show sites status <TAB>` → `active planned staging decommissioning retired`)
+- switch keywords like `pager` (advance the cursor without expecting a value)
+- root flags (`--format`, `--url`, `--verbose`, …)
+
+### Install
 
 ```sh
 # bash (macOS via homebrew)
 nbcli completion bash > $(brew --prefix)/etc/bash_completion.d/nbcli
 
-# zsh
-nbcli completion zsh > "${fpath[1]}/_nbcli"
+# bash (Linux)
+nbcli completion bash | sudo tee /etc/bash_completion.d/nbcli >/dev/null
+
+# zsh — file must be in fpath, name must be _nbcli
+nbcli completion zsh > "${fpath[1]}/_nbcli"   # site-wide
+# or user-local:
+mkdir -p ~/.zfunc && nbcli completion zsh > ~/.zfunc/_nbcli
+# then add to ~/.zshrc: fpath+=~/.zfunc; autoload -U compinit && compinit
 
 # fish
 nbcli completion fish > ~/.config/fish/completions/nbcli.fish
+
+# powershell
+nbcli completion powershell | Out-String | Invoke-Expression   # current session
 ```
+
+### Drive completion from the API (optional)
+
+cobra also supports completion via a one-shot exec: `nbcli __complete show sites ""`. The first run primes your shell cache; subsequent `TAB`s are instant. To verify completion without installing:
+
+```sh
+$ nbcli __complete show sites ""
+limit
+name
+offset
+pager
+region
+slug
+status
+tenant
+:4    # ShellCompDirectiveNoFileComp — no filename fallback
+```
+
+The `pager` line is the new switch keyword. It appears in the keyword list, takes no value, and the completer correctly hands control back to the keyword position after the user types it.
 
 ## Verbose / debug logging
 
