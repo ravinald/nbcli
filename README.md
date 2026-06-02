@@ -56,7 +56,7 @@ nbcli search all hq                   # cross-resource via /api/search/
 nbcli search all hq pager             # interactive pager
 ```
 
-`search <module> <key>` uses the same column set as `show <module>` (REST `?q=`). `search all <key>` prefers Netbox's `/api/graphql/` for a batched single-request cross-resource query; when GraphQL is disabled on the instance (returns 404), it auto-falls-back to a parallel REST fan-out across the same resource set. The choice is cached per client. Either way, results render in a four-column view:
+`search <module> <key>` uses the same column set as `show <module>` (REST `?q=`). `search all <key>` prefers Netbox's `/graphql/` for a batched single-request cross-resource query; when GraphQL is disabled on the instance (returns 404), it auto-falls-back to a parallel REST fan-out across the same resource set. Control with `search_backend: auto|graphql|rest` in `config.yaml` or `NBCLI_SEARCH_BACKEND=...`. Either backend renders results in a four-column view:
 
 ```
 TYPE              FIELD         VALUE         DISPLAY
@@ -117,6 +117,7 @@ format: table          # implicit default is table on a TTY, json when piped
 timeout_seconds: 30
 insecure_skip_verify: false
 auth_scheme: v2        # v2 (default, Bearer header) or v1 (legacy, Token header)
+search_backend: auto   # auto (probe + fallback) | graphql (always) | rest (skip probe)
 
 # Configurable columns (mirrors the web UI). Same config drives CLI tables
 # and the TUI. Resource key matches the API path segment.

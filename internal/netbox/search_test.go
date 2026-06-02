@@ -15,7 +15,7 @@ import (
 )
 
 // graphqlOK is the test fixture: a server that pretends to be Netbox's
-// /api/graphql/, captures the POST body, and returns one synthetic hit per
+// /graphql/, captures the POST body, and returns one synthetic hit per
 // requested list field.
 func graphqlOK(t *testing.T) (*httptest.Server, *atomic.Value, *atomic.Int32) {
 	t.Helper()
@@ -23,7 +23,7 @@ func graphqlOK(t *testing.T) (*httptest.Server, *atomic.Value, *atomic.Int32) {
 	var hits atomic.Int32
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/api/graphql/", r.URL.Path)
+		require.Equal(t, "/graphql/", r.URL.Path)
 		require.Equal(t, http.MethodPost, r.Method)
 		hits.Add(1)
 		body, _ := io.ReadAll(r.Body)
@@ -214,7 +214,7 @@ func TestBuildSearchQuery_StaysInSyncWithSearchTypes(t *testing.T) {
 
 // --- REST fallback + dispatcher --------------------------------------------
 
-// mixedServer fakes a Netbox where /api/graphql/ returns 404 (GraphQL off)
+// mixedServer fakes a Netbox where /graphql/ returns 404 (GraphQL off)
 // but every REST list endpoint works. Mirrors the failure mode reported on
 // netbox.scale.internal v4.5.5.
 func mixedServer(t *testing.T) (*httptest.Server, *atomic.Int32, *atomic.Int32) {
@@ -222,7 +222,7 @@ func mixedServer(t *testing.T) (*httptest.Server, *atomic.Int32, *atomic.Int32) 
 	var graphqlHits, restHits atomic.Int32
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/graphql/", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/graphql/", func(w http.ResponseWriter, _ *http.Request) {
 		graphqlHits.Add(1)
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("<!DOCTYPE html><html>404</html>"))

@@ -95,7 +95,7 @@ func TestSearch_AllUsesGraphQL(t *testing.T) {
 	code := cmd.Execute([]string{"search", "all", "hq"}, io)
 	require.Equalf(t, 0, code, "stderr=%s", errb.String())
 	assert.Equal(t, int32(1), hits.Load(), "one request, not per-endpoint fan-out")
-	assert.Equal(t, "/api/graphql/", seenPath.Load())
+	assert.Equal(t, "/graphql/", seenPath.Load())
 	body := seenBody.Load().(string)
 	assert.Contains(t, body, `"q":"hq"`, "query variable propagates")
 	// Output should reference at least two distinct types from the batched response.

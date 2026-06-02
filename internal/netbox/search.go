@@ -4,10 +4,12 @@
 // nbcli's `search all` reaches across resources two ways depending on what
 // the operator has enabled:
 //
-//  1. GraphQL (preferred): one POST to /api/graphql/ that batches every
+//  1. GraphQL (preferred): one POST to /graphql/ that batches every
 //     list_field. Lower latency, less server load, smaller payload.
+//     NOTE: Netbox mounts GraphQL at /graphql/ (not /api/graphql/, which
+//     is a common doc-induced mistake).
 //  2. REST fan-out (fallback): 12 parallel ?q= calls to the typed list
-//     endpoints. Used automatically when /api/graphql/ returns 404 — some
+//     endpoints. Used automatically when /graphql/ returns 404 — some
 //     deployments disable GraphQL for security or operational reasons.
 //
 // The choice is per-Client and cached after the first GraphQL probe so
@@ -29,6 +31,41 @@ import (
 	"strings"
 	"sync"
 )
+
+// SearchBackend names a transport for `search all`. Empty string is
+// equivalent to SearchAuto.
+type SearchBackend string
+
+// SearchBackend values.
+const (
+	// SearchAuto probes GraphQL and falls back to REST fan-out on 404.
+	// Caches the decision on the Client. Default when SearchBackend is "".
+	SearchAuto SearchBackend = "auto"
+
+	// SearchGraphQL forces /graphql/. Surfaces any failure (no fallback).
+	// Useful when the operator wants to be loud about GraphQL going down.
+	SearchGraphQL SearchBackend = "graphql"
+
+	// SearchREST forces parallel REST fan-out, skipping the GraphQL probe.
+	// Useful when GraphQL is permanently disabled on the Netbox instance.
+	SearchREST SearchBackend = "rest"
+)
+
+// normalizeSearchBackend validates the operator-supplied backend name and
+// folds empty / "auto" into SearchAuto.
+func normalizeSearchBackend(b SearchBackend) (SearchBackend, error) {
+	switch SearchBackend(strings.ToLower(string(b))) {
+	case "", SearchAuto:
+		return SearchAuto, nil
+	case SearchGraphQL:
+		return SearchGraphQL, nil
+	case SearchREST:
+		return SearchREST, nil
+	default:
+		return "", fmt.Errorf("netbox: unknown SearchBackend %q (want %q, %q, or %q)",
+			b, SearchAuto, SearchGraphQL, SearchREST)
+	}
+}
 
 // SearchResult is one hit from the cross-resource global search.
 //
@@ -89,23 +126,34 @@ var SearchTypes = []SearchType{
 // still letting a moderately wide search browse with the pager.
 const restFanoutCap = 100
 
-// Search dispatches a global search across every type in SearchTypes. Tries
-// GraphQL first; on 404 (GraphQL disabled), falls back to REST fan-out and
-// remembers the choice for subsequent calls on this Client.
+// Search dispatches a global search across every type in SearchTypes. The
+// transport depends on Client.searchBackend:
+//
+//   - SearchREST: always REST fan-out (no GraphQL probe).
+//   - SearchGraphQL: always GraphQL, propagates 404 as an error.
+//   - SearchAuto (default): GraphQL with auto-fallback to REST on 404.
+//     The decision is cached on the Client so subsequent calls skip the probe.
 func (c *Client) Search(ctx context.Context, opts SearchOptions) (Page[SearchResult], error) {
 	if opts.Q == "" {
 		return Page[SearchResult]{}, nil
 	}
-	if c.searchUsesREST.Load() {
+	switch c.searchBackend {
+	case SearchREST:
 		return c.searchREST(ctx, opts)
+	case SearchGraphQL:
+		return c.searchGraphQL(ctx, opts)
+	default: // SearchAuto
+		if c.searchUsesREST.Load() {
+			return c.searchREST(ctx, opts)
+		}
+		page, err := c.searchGraphQL(ctx, opts)
+		if isGraphQLDisabled(err) {
+			c.searchUsesREST.Store(true)
+			slog.InfoContext(ctx, "netbox: GraphQL endpoint returned 404; falling back to REST fan-out for `search all` (set search_backend: rest in config.yaml to skip this probe)")
+			return c.searchREST(ctx, opts)
+		}
+		return page, err
 	}
-	page, err := c.searchGraphQL(ctx, opts)
-	if isGraphQLDisabled(err) {
-		c.searchUsesREST.Store(true)
-		slog.InfoContext(ctx, "netbox: GraphQL endpoint returned 404; falling back to REST fan-out for `search all`")
-		return c.searchREST(ctx, opts)
-	}
-	return page, err
 }
 
 // isGraphQLDisabled returns true if err is a 404 from the GraphQL endpoint —
@@ -167,7 +215,7 @@ func (c *Client) searchGraphQL(ctx context.Context, opts SearchOptions) (Page[Se
 		Variables: map[string]any{"q": opts.Q},
 	}
 	var resp graphqlResponse
-	if err := c.Do(ctx, "POST", "/api/graphql/", nil, body, &resp); err != nil {
+	if err := c.Do(ctx, "POST", "/graphql/", nil, body, &resp); err != nil {
 		return Page[SearchResult]{}, err
 	}
 	if len(resp.Data) == 0 && len(resp.Errors) > 0 {

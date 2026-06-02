@@ -143,6 +143,7 @@ func clientFromCtx(cmd *cobra.Command) (*netbox.Client, error) {
 		BaseURL:            cfg.URL,
 		Token:              cfg.Token,
 		AuthScheme:         netbox.AuthScheme(cfg.AuthScheme),
+		SearchBackend:      netbox.SearchBackend(cfg.SearchBackend),
 		Timeout:            time.Duration(cfg.TimeoutSeconds) * time.Second,
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 	})

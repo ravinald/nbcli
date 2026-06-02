@@ -71,6 +71,14 @@ type Config struct {
 	// Netbox docs: https://netboxlabs.com/docs/netbox/integrations/rest-api/#v1-and-v2-tokens
 	AuthScheme string `mapstructure:"auth_scheme" yaml:"auth_scheme,omitempty"`
 
+	// SearchBackend controls which transport `nbcli search all` uses:
+	//   "auto"    (default) → probe /graphql/; fall back to REST fan-out on 404
+	//   "graphql"           → always GraphQL; surface any failure
+	//   "rest"              → skip GraphQL entirely, fan out across REST endpoints
+	// Set when GraphQL is permanently disabled on the Netbox instance and
+	// you want to skip the per-process probe (one less round-trip per CLI call).
+	SearchBackend string `mapstructure:"search_backend" yaml:"search_backend,omitempty"`
+
 	// Columns maps a resource name (e.g. "sites", "devices") to the column
 	// names to display, in order. Available column names come from the
 	// internal/columns registry. When a resource isn't listed, the registry's
@@ -93,6 +101,7 @@ func Defaults() Config {
 	return Config{
 		TimeoutSeconds: 30,
 		AuthScheme:     "v2",
+		SearchBackend:  "auto",
 	}
 }
 
@@ -256,6 +265,11 @@ func (c Config) Validate() error {
 	if c.URL == "" {
 		return errNoURL
 	}
+	switch strings.ToLower(c.SearchBackend) {
+	case "", "auto", "graphql", "rest":
+	default:
+		return fmt.Errorf("config: search_backend must be one of: auto, graphql, rest (got %q)", c.SearchBackend)
+	}
 	return nil
 }
 
@@ -308,6 +322,7 @@ func defaultsMap() map[string]any {
 		"timeout_seconds":      d.TimeoutSeconds,
 		"insecure_skip_verify": d.InsecureSkipVerify,
 		"auth_scheme":          d.AuthScheme,
+		"search_backend":       d.SearchBackend,
 	}
 }
 
