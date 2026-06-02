@@ -108,6 +108,7 @@ func Registry() map[string]Set {
 		"contacts":         ContactsSet(),
 		"virtual-machines": VMsSet(),
 		"clusters":         ClustersSet(),
+		"search":           SearchSet(),
 	}
 }
 
