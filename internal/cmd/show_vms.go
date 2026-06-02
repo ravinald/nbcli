@@ -18,7 +18,7 @@ var vmKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "cluster", Description: "cluster name"},
 	{Name: "tenant", Description: "tenant slug"},
 	{Name: "role", Description: "VM role slug"},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 func newShowVMsCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -53,7 +53,7 @@ func newShowVMsCmd(io IO) *cobra.Command {
 			}
 			cols := resolveColumns(cmd, "virtual-machines")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "Virtual Machines", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit

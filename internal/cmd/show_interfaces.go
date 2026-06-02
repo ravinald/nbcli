@@ -24,7 +24,7 @@ var interfaceKeywords = append([]cmdutils.KeywordSpec{
 		Values: []string{"true", "false"}},
 	{Name: "mgmt_only", Description: "true|false",
 		Values: []string{"true", "false"}},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 func newShowInterfacesCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -73,7 +73,7 @@ func newShowInterfacesCmd(io IO) *cobra.Command {
 
 			cols := resolveColumns(cmd, "interfaces")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "Interfaces", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit

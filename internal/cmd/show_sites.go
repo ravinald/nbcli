@@ -20,7 +20,7 @@ var siteKeywords = append([]cmdutils.KeywordSpec{
 		Values: []string{"active", "planned", "staging", "decommissioning", "retired"}},
 	{Name: "region", Description: "region slug"},
 	{Name: "tenant", Description: "tenant slug"},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 // newShowSitesCmd is the reference command shape. Every show subcommand
 // follows the same flow: parse positional keywords → typed Options → either
@@ -59,7 +59,7 @@ func newShowSitesCmd(io IO) *cobra.Command {
 
 			cols := resolveColumns(cmd, "sites")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "Sites", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit

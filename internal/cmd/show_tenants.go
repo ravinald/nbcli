@@ -15,7 +15,7 @@ var tenantKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "name", Description: "exact tenant name"},
 	{Name: "slug", Description: "tenant slug"},
 	{Name: "group", Description: "tenant group slug"},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 func newShowTenantsCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -50,7 +50,7 @@ func newShowTenantsCmd(io IO) *cobra.Command {
 
 			cols := resolveColumns(cmd, "tenants")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "Tenants", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit

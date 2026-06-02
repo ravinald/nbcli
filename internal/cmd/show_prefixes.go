@@ -20,7 +20,7 @@ var prefixKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "role", Description: "prefix role slug"},
 	{Name: "site", Description: "site slug"},
 	{Name: "tenant", Description: "tenant slug"},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 func newShowPrefixesCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -56,7 +56,7 @@ func newShowPrefixesCmd(io IO) *cobra.Command {
 			}
 			cols := resolveColumns(cmd, "prefixes")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "Prefixes", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit
