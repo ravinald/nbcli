@@ -36,6 +36,19 @@ func PaginationKeywords() []KeywordSpec {
 	}
 }
 
+// PagerKeyword is the switch-style positional keyword every show command
+// supports for opening the less-like interactive pager. Junos-shaped:
+//
+//	nbcli show sites pager
+//	nbcli show devices status active pager
+func PagerKeyword() KeywordSpec {
+	return KeywordSpec{
+		Name:        "pager",
+		Description: "open the less-like interactive pager (n/p step, / search, g goto, q quit)",
+		NoValue:     true,
+	}
+}
+
 // ApplyLimitOffset parses the "limit" and "offset" keywords out of kv into
 // *limit and *offset. Convention used by every `show` command:
 //

@@ -19,7 +19,7 @@ var rackKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "role", Description: "rack role slug"},
 	{Name: "location", Description: "location slug"},
 	{Name: "tenant", Description: "tenant slug"},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 func newShowRacksCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -56,7 +56,7 @@ func newShowRacksCmd(io IO) *cobra.Command {
 
 			cols := resolveColumns(cmd, "racks")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "Racks", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit
