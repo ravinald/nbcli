@@ -43,35 +43,51 @@ type KeywordSpec struct {
 	// Values, when non-empty, is the static list of valid values used for
 	// shell completion. Leave nil for free-form values.
 	Values []string
+
+	// NoValue marks a switch-style keyword that takes no value. The user
+	// types just the keyword (e.g. `nbcli show sites pager`). Parsed into
+	// the kv map as Name → "true".
+	NoValue bool
 }
 
-// ParseShowArgs walks args as [keyword value]* pairs into a map. It rejects:
+// ParseShowArgs walks args as positional keywords into a map. Two shapes:
 //
-//   - odd argc — a keyword with no value
+//   - value keyword: `name hq` → out["name"] = "hq"
+//   - switch keyword (KeywordSpec.NoValue): `pager` → out["pager"] = "true"
+//
+// Errors on:
+//
 //   - unknown keyword — caught loudly so typos can't silently drop a filter
 //   - duplicate keyword — caller should use one filter per attribute
+//   - value keyword with no value (end-of-args)
 //
-// Strict structure (keyword-then-value); order across pairs is free, so
-// `name hq status active` and `status active name hq` are equivalent.
+// Order across keywords is free, so `name hq status active pager` and
+// `pager status active name hq` are equivalent.
 func ParseShowArgs(args []string, allowed []KeywordSpec) (map[string]string, error) {
-	allowedSet := make(map[string]struct{}, len(allowed))
+	byName := make(map[string]KeywordSpec, len(allowed))
 	for _, k := range allowed {
-		allowedSet[k.Name] = struct{}{}
+		byName[k.Name] = k
 	}
-	if len(args)%2 != 0 {
-		return nil, fmt.Errorf("expected keyword/value pairs (got %d args; last is %q)", len(args), args[len(args)-1])
-	}
-	out := make(map[string]string, len(args)/2)
-	for i := 0; i < len(args); i += 2 {
-		kw, val := args[i], args[i+1] //nolint:gosec // len(args) is even per the check above
-
-		if _, ok := allowedSet[kw]; !ok {
+	out := make(map[string]string)
+	for i := 0; i < len(args); {
+		kw := args[i]
+		spec, known := byName[kw]
+		if !known {
 			return nil, fmt.Errorf("unknown keyword %q (expected one of: %s)", kw, allowedList(allowed))
 		}
 		if _, dup := out[kw]; dup {
 			return nil, fmt.Errorf("duplicate keyword %q", kw)
 		}
-		out[kw] = val
+		if spec.NoValue {
+			out[kw] = "true"
+			i++
+			continue
+		}
+		if i+1 >= len(args) {
+			return nil, fmt.Errorf("keyword %q expects a value", kw)
+		}
+		out[kw] = args[i+1] //nolint:gosec // i+1 < len(args) per the check above
+		i += 2
 	}
 	return out, nil
 }
@@ -85,13 +101,34 @@ func Validator(allowed []KeywordSpec) cobra.PositionalArgs {
 	}
 }
 
-// UsageLine builds a short "[kw1|kw2|... <value>]..." suffix suitable for the
-// cobra.Command.Use field.
+// UsageLine builds a short usage suffix suitable for the cobra.Command.Use
+// field. Value-taking keywords and switch-style keywords list separately:
+//
+//	[name|slug|status <value>]... [pager]...
 func UsageLine(allowed []KeywordSpec) string {
-	return "[" + strings.Join(allowedNames(allowed), "|") + " <value>]..."
+	var withVal, switches []string
+	for _, k := range allowed {
+		if k.NoValue {
+			switches = append(switches, k.Name)
+		} else {
+			withVal = append(withVal, k.Name)
+		}
+	}
+	sort.Strings(withVal)
+	sort.Strings(switches)
+	var parts []string
+	if len(withVal) > 0 {
+		parts = append(parts, "["+strings.Join(withVal, "|")+" <value>]...")
+	}
+	if len(switches) > 0 {
+		parts = append(parts, "["+strings.Join(switches, "|")+"]...")
+	}
+	return strings.Join(parts, " ")
 }
 
 // HelpTable renders an indented "keyword  description" block for Command.Long.
+// Switch-style keywords (NoValue) are tagged "(switch)" so users know they
+// take no value.
 func HelpTable(allowed []KeywordSpec) string {
 	width := 0
 	for _, k := range allowed {
@@ -102,46 +139,68 @@ func HelpTable(allowed []KeywordSpec) string {
 	var b strings.Builder
 	b.WriteString("Positional filters (any order):\n")
 	for _, k := range allowed {
-		ex := ""
-		if k.Example != "" {
-			ex = " (e.g. " + k.Example + ")"
+		suffix := ""
+		switch {
+		case k.NoValue:
+			suffix = " (switch)"
+		case k.Example != "":
+			suffix = " (e.g. " + k.Example + ")"
 		}
-		fmt.Fprintf(&b, "  %-*s  %s%s\n", width, k.Name, k.Description, ex)
+		fmt.Fprintf(&b, "  %-*s  %s%s\n", width, k.Name, k.Description, suffix)
 	}
 	return b.String()
 }
 
 // CompletionFunc returns a cobra.ValidArgsFunction that completes the next
-// positional argument: at an even index it offers unused keywords; at an odd
-// index it offers the static Values declared for the preceding keyword (or
-// nothing if the keyword is free-form).
+// positional argument. Walks the existing args, tracking which keywords are
+// consumed (counting NoValue ones as one slot, value-taking ones as two).
+// Returns unused keywords at a keyword position, or the Values list at a
+// value position.
 func CompletionFunc(allowed []KeywordSpec) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	byName := make(map[string]KeywordSpec, len(allowed))
 	for _, k := range allowed {
 		byName[k.Name] = k
 	}
 	return func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
-		// Track keywords the user has already filled in to avoid offering them again.
 		used := make(map[string]struct{})
-		for i := 0; i+1 < len(args); i += 2 {
-			used[args[i]] = struct{}{}
-		}
-		if len(args)%2 == 0 {
-			// Even index → suggest a keyword.
-			out := make([]string, 0, len(allowed))
-			for _, k := range allowed {
-				if _, dup := used[k.Name]; !dup {
-					out = append(out, k.Name)
-				}
+		var pendingValueKw *KeywordSpec
+		for i := 0; i < len(args); {
+			kw := args[i]
+			used[kw] = struct{}{}
+			spec, known := byName[kw]
+			if !known {
+				i++
+				pendingValueKw = nil
+				continue
 			}
-			sort.Strings(out)
-			return out, cobra.ShellCompDirectiveNoFileComp
+			if spec.NoValue {
+				i++
+				pendingValueKw = nil
+				continue
+			}
+			if i == len(args)-1 {
+				// Value-taking keyword typed but no value yet → value position.
+				s := spec
+				pendingValueKw = &s
+				break
+			}
+			i += 2
+			pendingValueKw = nil
 		}
-		// Odd index → value for the keyword just typed.
-		if k, ok := byName[args[len(args)-1]]; ok && len(k.Values) > 0 {
-			return append([]string(nil), k.Values...), cobra.ShellCompDirectiveNoFileComp
+		if pendingValueKw != nil {
+			if len(pendingValueKw.Values) == 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return append([]string(nil), pendingValueKw.Values...), cobra.ShellCompDirectiveNoFileComp
 		}
-		return nil, cobra.ShellCompDirectiveNoFileComp
+		out := make([]string, 0, len(allowed))
+		for _, k := range allowed {
+			if _, dup := used[k.Name]; !dup {
+				out = append(out, k.Name)
+			}
+		}
+		sort.Strings(out)
+		return out, cobra.ShellCompDirectiveNoFileComp
 	}
 }
 

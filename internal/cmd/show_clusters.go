@@ -17,7 +17,7 @@ var clusterKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "site", Description: "site slug"},
 	{Name: "status", Description: "status value",
 		Values: []string{"active", "planned", "staging", "decommissioning", "offline"}},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 func newShowClustersCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -50,7 +50,7 @@ func newShowClustersCmd(io IO) *cobra.Command {
 			}
 			cols := resolveColumns(cmd, "clusters")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "Clusters", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit

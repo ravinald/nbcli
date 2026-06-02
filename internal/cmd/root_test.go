@@ -103,12 +103,12 @@ func TestExecute_ShowContacts_DuplicateKeyword(t *testing.T) {
 	assert.Contains(t, errb.String(), `duplicate keyword "name"`)
 }
 
-func TestExecute_ShowSites_OddArgsFail(t *testing.T) {
+func TestExecute_ShowSites_ValueKeywordMissingValue(t *testing.T) {
 	t.Parallel()
 	io, _, errb := makeIO()
 	code := cmd.Execute([]string{"show", "sites", "status"}, io)
 	require.NotEqual(t, 0, code)
-	assert.Contains(t, errb.String(), "keyword/value pairs")
+	assert.Contains(t, errb.String(), `keyword "status" expects a value`)
 }
 
 func TestExecute_Passthrough_RequiresPluginAndSubpath(t *testing.T) {
