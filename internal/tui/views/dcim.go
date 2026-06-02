@@ -11,8 +11,6 @@ import (
 
 // NewSites returns a View listing /dcim/sites/.
 func NewSites(client *netbox.Client, resolve ColumnsResolver) View {
-	visible := resolve("sites")
-	cols, mapper := buildCols[netbox.Site](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Site], error) {
 		listOpts := netbox.ListSitesOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -22,13 +20,11 @@ func NewSites(client *netbox.Client, resolve ColumnsResolver) View {
 		}
 		return FetchResult[netbox.Site]{Rows: page.Results, Total: page.Count}, nil
 	}
-	return newBaseView[netbox.Site]("Sites", cols, mapper, func(s netbox.Site) int { return s.ID }, fetcher)
+	return newBaseView[netbox.Site]("Sites", "sites", resolve, func(s netbox.Site) int { return s.ID }, fetcher)
 }
 
 // NewRacks returns a View listing /dcim/racks/.
 func NewRacks(client *netbox.Client, resolve ColumnsResolver) View {
-	visible := resolve("racks")
-	cols, mapper := buildCols[netbox.Rack](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Rack], error) {
 		listOpts := netbox.ListRacksOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -38,13 +34,11 @@ func NewRacks(client *netbox.Client, resolve ColumnsResolver) View {
 		}
 		return FetchResult[netbox.Rack]{Rows: page.Results, Total: page.Count}, nil
 	}
-	return newBaseView[netbox.Rack]("Racks", cols, mapper, func(r netbox.Rack) int { return r.ID }, fetcher)
+	return newBaseView[netbox.Rack]("Racks", "racks", resolve, func(r netbox.Rack) int { return r.ID }, fetcher)
 }
 
 // NewDevices returns a View listing /dcim/devices/.
 func NewDevices(client *netbox.Client, resolve ColumnsResolver) View {
-	visible := resolve("devices")
-	cols, mapper := buildCols[netbox.Device](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Device], error) {
 		listOpts := netbox.ListDevicesOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -54,13 +48,11 @@ func NewDevices(client *netbox.Client, resolve ColumnsResolver) View {
 		}
 		return FetchResult[netbox.Device]{Rows: page.Results, Total: page.Count}, nil
 	}
-	return newBaseView[netbox.Device]("Devices", cols, mapper, func(d netbox.Device) int { return d.ID }, fetcher)
+	return newBaseView[netbox.Device]("Devices", "devices", resolve, func(d netbox.Device) int { return d.ID }, fetcher)
 }
 
 // NewInterfaces returns a View listing /dcim/interfaces/.
 func NewInterfaces(client *netbox.Client, resolve ColumnsResolver) View {
-	visible := resolve("interfaces")
-	cols, mapper := buildCols[netbox.Interface](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Interface], error) {
 		listOpts := netbox.ListInterfacesOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -70,5 +62,5 @@ func NewInterfaces(client *netbox.Client, resolve ColumnsResolver) View {
 		}
 		return FetchResult[netbox.Interface]{Rows: page.Results, Total: page.Count}, nil
 	}
-	return newBaseView[netbox.Interface]("Interfaces", cols, mapper, func(i netbox.Interface) int { return i.ID }, fetcher)
+	return newBaseView[netbox.Interface]("Interfaces", "interfaces", resolve, func(i netbox.Interface) int { return i.ID }, fetcher)
 }

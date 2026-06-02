@@ -92,6 +92,7 @@ func NewRootCmd(io IO) *cobra.Command {
 		newShowCmd(io),
 		newTUICmd(io),
 		newPluginCmd(io),
+		newColumnsCmd(io),
 	)
 
 	return root

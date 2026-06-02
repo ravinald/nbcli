@@ -92,6 +92,26 @@ type FetchResult[T any] struct {
 // just call resolve("sites") and get whatever the user configured.
 type ColumnsResolver func(resource string) []columns.Column
 
+// applySearchOrID pokes the FetchOpts.Query / FetchOpts.ID into the typed
+// list options' Extra url.Values. ID takes precedence (FK drill-down).
+// Shared by every factory fetcher closure so the search/id wire format
+// stays in one place.
+func applySearchOrID(extra *url.Values, opts FetchOpts) {
+	if opts.ID > 0 {
+		if *extra == nil {
+			*extra = url.Values{}
+		}
+		extra.Set("id", strconv.Itoa(opts.ID))
+		return
+	}
+	if opts.Query != "" {
+		if *extra == nil {
+			*extra = url.Values{}
+		}
+		extra.Set("q", opts.Query)
+	}
+}
+
 // FKRef is a parsed foreign-key reference. Built by DetailFKs when scanning
 // a struct's fields. Detail mode uses the slice index + 1 as the user-facing
 // digit key.

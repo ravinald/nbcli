@@ -11,8 +11,6 @@ import (
 
 // NewPrefixes returns a View listing /ipam/prefixes/.
 func NewPrefixes(client *netbox.Client, resolve ColumnsResolver) View {
-	visible := resolve("prefixes")
-	cols, mapper := buildCols[netbox.Prefix](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.Prefix], error) {
 		listOpts := netbox.ListPrefixesOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -22,13 +20,11 @@ func NewPrefixes(client *netbox.Client, resolve ColumnsResolver) View {
 		}
 		return FetchResult[netbox.Prefix]{Rows: page.Results, Total: page.Count}, nil
 	}
-	return newBaseView[netbox.Prefix]("Prefixes", cols, mapper, func(p netbox.Prefix) int { return p.ID }, fetcher)
+	return newBaseView[netbox.Prefix]("Prefixes", "prefixes", resolve, func(p netbox.Prefix) int { return p.ID }, fetcher)
 }
 
 // NewIPAddresses returns a View listing /ipam/ip-addresses/.
 func NewIPAddresses(client *netbox.Client, resolve ColumnsResolver) View {
-	visible := resolve("ip-addresses")
-	cols, mapper := buildCols[netbox.IPAddress](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.IPAddress], error) {
 		listOpts := netbox.ListIPAddressesOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -38,13 +34,11 @@ func NewIPAddresses(client *netbox.Client, resolve ColumnsResolver) View {
 		}
 		return FetchResult[netbox.IPAddress]{Rows: page.Results, Total: page.Count}, nil
 	}
-	return newBaseView[netbox.IPAddress]("IP Addresses", cols, mapper, func(i netbox.IPAddress) int { return i.ID }, fetcher)
+	return newBaseView[netbox.IPAddress]("IP Addresses", "ip-addresses", resolve, func(i netbox.IPAddress) int { return i.ID }, fetcher)
 }
 
 // NewVLANs returns a View listing /ipam/vlans/.
 func NewVLANs(client *netbox.Client, resolve ColumnsResolver) View {
-	visible := resolve("vlans")
-	cols, mapper := buildCols[netbox.VLAN](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.VLAN], error) {
 		listOpts := netbox.ListVLANsOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -54,13 +48,11 @@ func NewVLANs(client *netbox.Client, resolve ColumnsResolver) View {
 		}
 		return FetchResult[netbox.VLAN]{Rows: page.Results, Total: page.Count}, nil
 	}
-	return newBaseView[netbox.VLAN]("VLANs", cols, mapper, func(v netbox.VLAN) int { return v.ID }, fetcher)
+	return newBaseView[netbox.VLAN]("VLANs", "vlans", resolve, func(v netbox.VLAN) int { return v.ID }, fetcher)
 }
 
 // NewVRFs returns a View listing /ipam/vrfs/.
 func NewVRFs(client *netbox.Client, resolve ColumnsResolver) View {
-	visible := resolve("vrfs")
-	cols, mapper := buildCols[netbox.VRF](visible)
 	fetcher := func(ctx context.Context, opts FetchOpts) (FetchResult[netbox.VRF], error) {
 		listOpts := netbox.ListVRFsOptions{Offset: opts.Offset, Limit: opts.Limit}
 		applySearchOrID(&listOpts.Extra, opts)
@@ -70,5 +62,5 @@ func NewVRFs(client *netbox.Client, resolve ColumnsResolver) View {
 		}
 		return FetchResult[netbox.VRF]{Rows: page.Results, Total: page.Count}, nil
 	}
-	return newBaseView[netbox.VRF]("VRFs", cols, mapper, func(v netbox.VRF) int { return v.ID }, fetcher)
+	return newBaseView[netbox.VRF]("VRFs", "vrfs", resolve, func(v netbox.VRF) int { return v.ID }, fetcher)
 }

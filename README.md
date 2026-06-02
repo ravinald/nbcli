@@ -104,7 +104,8 @@ columns:
 List the names available for a resource:
 
 ```sh
-nbcli show sites --columns ?    # (not implemented yet — for now check internal/columns/)
+nbcli columns                # all resources
+nbcli columns sites          # available columns + headers + default flag
 ```
 
 Per-call override (CLI only):
@@ -112,6 +113,8 @@ Per-call override (CLI only):
 ```sh
 nbcli show devices --columns id,name,primary_ip4,serial
 ```
+
+**Interactive column picker (TUI).** Press `C` from any sidebar item in `nbcli tui` to open the picker popup. Toggle columns with `space`/`x`, reorder with `K`/`J` (or `Ctrl+↑`/`Ctrl+↓`), commit with `Enter` (writes back to `config.yaml` and refreshes the table), or `Esc` to cancel.
 
 ### Token auth scheme (v1 vs v2)
 

@@ -71,6 +71,20 @@ type Model struct {
 	// focused is the currently-active viewport (left or right).
 	focused Viewport
 
+	// picker is the column-configuration popup. Opened with 'C'.
+	picker pickerModel
+
+	// overrides is the live column-config map shared with the column resolver.
+	// Mutating it (e.g. via picker save) changes what views see on RefreshColumns.
+	overrides map[string][]string
+
+	// save persists the current config to disk. Called after the picker writes
+	// new column choices into overrides.
+	save func() error
+
+	// pickerErr surfaces save failures in the status bar.
+	pickerErr string
+
 	showHelp bool
 
 	width, height int
@@ -82,10 +96,15 @@ type Model struct {
 	rightContentW, rightContentH int
 }
 
-// New constructs the root model with the given Netbox client and a column
-// override map (from config.Columns). overrides is nil-safe: missing
-// resources fall back to the registry's Default-flagged columns.
-func New(client *netbox.Client, overrides map[string][]string) Model {
+// New constructs the root model with the given Netbox client, the column
+// override map (from config.Columns), and a save closure that persists the
+// override map to config.yaml after the picker writes to it. overrides is
+// nil-safe: missing resources fall back to the registry's Default-flagged
+// columns. save may be nil in tests; failures are surfaced via the status bar.
+func New(client *netbox.Client, overrides map[string][]string, save func() error) Model {
+	if overrides == nil {
+		overrides = map[string][]string{}
+	}
 	sections := DefaultSections()
 	var flat []flatEntry
 	for si, s := range sections {
@@ -115,7 +134,10 @@ func New(client *netbox.Client, overrides map[string][]string) Model {
 			"Virtual Machines": views.NewVMs(client, resolve),
 			"Clusters":         views.NewClusters(client, resolve),
 		},
-		focused: LeftViewport,
+		focused:   LeftViewport,
+		picker:    newPickerModel(),
+		overrides: overrides,
+		save:      save,
 	}
 	m.active = m.lookupView()
 	return m
@@ -160,13 +182,54 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case views.EscapeUpMsg:
 		m.focused = LeftViewport
 		return m, nil
+	case pickerSavedMsg:
+		m.overrides[msg.resource] = msg.columns
+		if m.save != nil {
+			if err := m.save(); err != nil {
+				m.pickerErr = "save failed: " + err.Error()
+			} else {
+				m.pickerErr = ""
+			}
+		}
+		// Refresh the view that owns this resource.
+		for _, v := range m.views {
+			if r, ok := v.(interface{ Resource() string }); ok && r.Resource() == msg.resource {
+				if refresher, ok := v.(interface{ RefreshColumns() }); ok {
+					refresher.RefreshColumns()
+				}
+			}
+		}
+		return m, nil
+	case pickerCancelledMsg:
+		m.pickerErr = ""
+		return m, nil
 	case tea.KeyMsg:
+		// Picker owns the keyboard when it's open.
+		if m.picker.Active() {
+			var cmd tea.Cmd
+			m.picker, cmd = m.picker.Update(msg)
+			return m, cmd
+		}
 		// Global keys, regardless of focus.
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "?":
 			m.showHelp = !m.showHelp
+			return m, nil
+		case "C":
+			// Open the column picker for the sidebar-selected resource.
+			name := m.currentItem()
+			view, ok := m.views[name]
+			if !ok {
+				return m, nil
+			}
+			r, hasResource := view.(interface{ Resource() string })
+			nm, hasNames := view.(interface{ VisibleColumnNames() []string })
+			if !hasResource || !hasNames {
+				return m, nil
+			}
+			m.picker.Open(r.Resource(), nm.VisibleColumnNames())
 			return m, nil
 		case "tab", "shift+tab":
 			// Toggle which viewport owns the keyboard.
@@ -321,9 +384,12 @@ func (m Model) View() string {
 		Render(m.renderSidebar())
 
 	var rightContent string
-	if m.showHelp {
+	switch {
+	case m.picker.Active():
+		rightContent = m.picker.View()
+	case m.showHelp:
 		rightContent = m.styles.Title.Render("Help") + "\n\n" + helpText()
-	} else {
+	default:
 		rightContent = m.renderMain()
 	}
 	rightPane := PaneStyle(m.focused == RightViewport).
@@ -338,13 +404,19 @@ func (m Model) View() string {
 
 // statusLine builds the bottom hint based on which viewport has focus.
 func (m Model) statusLine() string {
+	if m.pickerErr != "" {
+		return m.pickerErr + " · ? help · q quit"
+	}
+	if m.picker.Active() {
+		return "space toggle · K/J reorder · enter save · esc cancel"
+	}
 	if m.showHelp {
 		return "? close help · q quit"
 	}
 	if m.focused == LeftViewport {
-		return "↑/↓ section · tab focus right · ? help · q quit"
+		return "↑/↓ section · tab focus right · C columns · ? help · q quit"
 	}
-	return "↑/↓ rows · enter detail · / search · tab focus left · ? help · q quit"
+	return "↑/↓ rows · enter detail · / search · C columns · tab focus left · ? help · q quit"
 }
 
 // helpText is the canonical keybind reference shown by `?`.
@@ -373,6 +445,13 @@ func helpText() string {
 		"Search (API-side, hits Netbox)\n" +
 		"  Enter              run the query\n" +
 		"  Esc                cancel (input only; committed query stays)\n" +
+		"\n" +
+		"Column picker (popup)\n" +
+		"  C                  open picker for the selected resource\n" +
+		"  space / x          toggle column visibility\n" +
+		"  K / J · Ctrl+↑/↓   reorder current column up / down\n" +
+		"  enter              save to config.yaml + refresh table\n" +
+		"  esc                cancel\n" +
 		"\n" +
 		"Global\n" +
 		"  ?                  toggle this help\n" +
@@ -416,8 +495,10 @@ func (m Model) renderMain() string {
 }
 
 // Run starts the bubbletea program until quit. Called from `nbcli tui`.
-func Run(client *netbox.Client, columnOverrides map[string][]string) error {
-	p := tea.NewProgram(New(client, columnOverrides), tea.WithAltScreen())
+// save is called after the picker writes column choices into overrides;
+// pass nil to disable persistence (useful for tests).
+func Run(client *netbox.Client, overrides map[string][]string, save func() error) error {
+	p := tea.NewProgram(New(client, overrides, save), tea.WithAltScreen())
 	_, err := p.Run()
 	return err
 }

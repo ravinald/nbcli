@@ -20,7 +20,10 @@ func newTUICmd(_ IO) *cobra.Command {
 				return err
 			}
 			cfg := configFromCtx(cmd.Context())
-			return tui.Run(client, cfg.Columns)
+			if cfg.Columns == nil {
+				cfg.Columns = map[string][]string{}
+			}
+			return tui.Run(client, cfg.Columns, cfg.Save)
 		},
 	}
 }

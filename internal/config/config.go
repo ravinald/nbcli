@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 // errNoURL is returned when no URL was configured for live API calls.
@@ -254,6 +255,38 @@ func configDirFor(home string) string {
 func (c Config) Validate() error {
 	if c.URL == "" {
 		return errNoURL
+	}
+	return nil
+}
+
+// Save writes c to config.yaml at c.ConfigFile (or the default
+// $XDG_CONFIG_HOME/nbcli/config.yaml when ConfigFile is empty). The write is
+// atomic (tmpfile + rename) and creates the parent directory at mode 0700.
+// Token / EnvFiles / ConfigFile fields carry yaml:"-" so they never land on
+// disk — the secret-isolation invariant holds even through Save.
+func (c Config) Save() error {
+	path := c.ConfigFile
+	if path == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("config: resolve home: %w", err)
+		}
+		path = filepath.Join(configDirFor(home), "config.yaml")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("config: mkdir %s: %w", filepath.Dir(path), err)
+	}
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Errorf("config: marshal: %w", err)
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return fmt.Errorf("config: write tmp: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("config: rename %s: %w", path, err)
 	}
 	return nil
 }

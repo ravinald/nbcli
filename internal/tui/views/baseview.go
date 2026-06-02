@@ -35,11 +35,13 @@ type FetcherFn[T any] func(ctx context.Context, opts FetchOpts) (FetchResult[T],
 // Concrete factories (NewTenants, NewDevices, ...) build a *baseView[T] with
 // the right title/columns/mapper/idOf/fetcher and return it as a View.
 type baseView[T any] struct {
-	title   string
-	table   table.Model
-	mapper  RowMapper[T]
-	idOf    IDOf[T]
-	fetcher FetcherFn[T]
+	title    string
+	resource string
+	resolve  ColumnsResolver
+	table    table.Model
+	mapper   RowMapper[T]
+	idOf     IDOf[T]
+	fetcher  FetcherFn[T]
 
 	// Pagination + search state.
 	rows   []T    // current page's rows
@@ -79,10 +81,11 @@ type loadedMsg[T any] struct {
 // defaultPageSize is the limit used until the first SizeMsg arrives.
 const defaultPageSize = 50
 
-// newBaseView constructs a configured baseView.
-func newBaseView[T any](title string, cols []table.Column, mapper RowMapper[T], idOf IDOf[T], fetcher FetcherFn[T]) *baseView[T] {
+// newBaseView constructs a configured baseView. Columns are resolved lazily
+// via resolve(resource) so the picker can hot-swap them at runtime via
+// RefreshColumns().
+func newBaseView[T any](title, resource string, resolve ColumnsResolver, idOf IDOf[T], fetcher FetcherFn[T]) *baseView[T] {
 	t := table.New(
-		table.WithColumns(cols),
 		table.WithFocused(true),
 		table.WithHeight(20),
 	)
@@ -94,14 +97,59 @@ func newBaseView[T any](title string, cols []table.Column, mapper RowMapper[T], 
 	ti.CharLimit = 64
 	ti.Width = 40
 
-	return &baseView[T]{
+	b := &baseView[T]{
 		title:       title,
+		resource:    resource,
+		resolve:     resolve,
 		table:       t,
-		mapper:      mapper,
 		idOf:        idOf,
 		fetcher:     fetcher,
 		searchInput: ti,
 	}
+	b.applyColumns()
+	return b
+}
+
+// applyColumns rebuilds the table's column headers and the typed row mapper
+// from the current resolve(resource) result. Called once at construction
+// and again by RefreshColumns when the picker writes new config.
+func (b *baseView[T]) applyColumns() {
+	visible := b.resolve(b.resource)
+	tcols := make([]table.Column, len(visible))
+	for i, c := range visible {
+		tcols[i] = table.Column{Title: c.Header, Width: c.Width}
+	}
+	b.table.SetColumns(tcols)
+	cells := visible // capture for closure
+	b.mapper = func(row T) table.Row {
+		out := make(table.Row, len(cells))
+		for i, c := range cells {
+			out[i] = c.Extract(row)
+		}
+		return out
+	}
+}
+
+// Resource returns the registry key for this view (e.g. "sites"). Used by
+// the picker (via type assertion) to know which Set to configure.
+func (b *baseView[T]) Resource() string { return b.resource }
+
+// VisibleColumnNames returns the currently-visible column names in display
+// order. Picker seeds itself with these.
+func (b *baseView[T]) VisibleColumnNames() []string {
+	visible := b.resolve(b.resource)
+	out := make([]string, len(visible))
+	for i, c := range visible {
+		out[i] = c.Name
+	}
+	return out
+}
+
+// RefreshColumns re-resolves columns from the (now-updated) resolver and
+// rebuilds the table. Called by the shell after the picker saves config.
+func (b *baseView[T]) RefreshColumns() {
+	b.applyColumns()
+	b.refreshTable()
 }
 
 // Title is the human label rendered above the view body.
