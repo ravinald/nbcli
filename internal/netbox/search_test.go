@@ -148,6 +148,81 @@ func TestSearch_AllEndpointsFailErrors(t *testing.T) {
 		"joined error should reference at least one failed endpoint, got: %s", err.Error())
 }
 
+// --- Matched-field detection -----------------------------------------------
+
+func TestFindMatchedField_PriorityFirst(t *testing.T) {
+	t.Parallel()
+	raw := json.RawMessage(`{"name":"hq-sw-01","description":"hq core","comments":"hq backup"}`)
+	field, value := findMatchedField(raw, "hq")
+	assert.Equal(t, "name", field, "name wins over description/comments")
+	assert.Equal(t, "hq-sw-01", value)
+}
+
+func TestFindMatchedField_FallsBackToComments(t *testing.T) {
+	t.Parallel()
+	raw := json.RawMessage(`{"name":"i-deadbeef","description":"","comments":"owner ravi"}`)
+	field, value := findMatchedField(raw, "ravi")
+	assert.Equal(t, "comments", field)
+	assert.Equal(t, "owner ravi", value)
+}
+
+func TestFindMatchedField_NestedRef(t *testing.T) {
+	t.Parallel()
+	// VM owned by tenant "Ravi Pina" — match lives in tenant.name.
+	raw := json.RawMessage(`{"name":"i-deadbeef","tenant":{"id":7,"name":"Ravi Pina"}}`)
+	field, value := findMatchedField(raw, "ravi")
+	assert.Equal(t, "tenant.name", field)
+	assert.Equal(t, "Ravi Pina", value)
+}
+
+func TestFindMatchedField_CaseInsensitive(t *testing.T) {
+	t.Parallel()
+	raw := json.RawMessage(`{"name":"RAVI-LAB-01"}`)
+	field, value := findMatchedField(raw, "ravi")
+	assert.Equal(t, "name", field)
+	assert.Equal(t, "RAVI-LAB-01", value)
+}
+
+func TestFindMatchedField_NoMatchEmpty(t *testing.T) {
+	t.Parallel()
+	// Netbox matched via tags / custom_fields / something we don't scan;
+	// return empty rather than guessing wrong.
+	raw := json.RawMessage(`{"name":"foo","description":"bar"}`)
+	field, value := findMatchedField(raw, "ravi")
+	assert.Empty(t, field)
+	assert.Empty(t, value)
+}
+
+func TestSearch_PopulatesFieldAndValueOnHit(t *testing.T) {
+	t.Parallel()
+	// End-to-end: the user types `search all ravi`, gets a VM whose
+	// comments contain "ravi", and FIELD/VALUE land in the SearchResult.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/virtualization/virtual-machines/":
+			_ = json.NewEncoder(w).Encode(Page[json.RawMessage]{
+				Count: 1,
+				Results: []json.RawMessage{
+					json.RawMessage(`{"id":1,"name":"i-deadbeef","comments":"owned by ravi.pina"}`),
+				},
+			})
+		default:
+			_ = json.NewEncoder(w).Encode(Page[json.RawMessage]{})
+		}
+	}))
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL, Token: "t"})
+	require.NoError(t, err)
+	page, err := c.Search(context.Background(), SearchOptions{Q: "ravi", Limit: 50})
+	require.NoError(t, err)
+	require.Len(t, page.Results, 1)
+	assert.Equal(t, "virtualization.virtualmachine", page.Results[0].Type)
+	assert.Equal(t, "comments", page.Results[0].Field)
+	assert.Equal(t, "owned by ravi.pina", page.Results[0].Value)
+}
+
 func TestSearchFetcher_BindsOpts(t *testing.T) {
 	t.Parallel()
 	srv, _, _ := fanoutServer(t)

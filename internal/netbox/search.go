@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -125,7 +126,13 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) (Page[SearchRes
 			}
 			results := make([]SearchResult, len(page.Results))
 			for i, raw := range page.Results {
-				results[i] = SearchResult{Type: t.Dotted, Object: raw}
+				field, value := findMatchedField(raw, opts.Q)
+				results[i] = SearchResult{
+					Type:   t.Dotted,
+					Object: raw,
+					Field:  field,
+					Value:  value,
+				}
 			}
 			out <- fanResult{Type: t.Dotted, Results: results}
 		}(t)
@@ -156,6 +163,76 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) (Page[SearchRes
 		end = start + opts.Limit
 	}
 	return Page[SearchResult]{Count: total, Results: all[start:end]}, nil
+}
+
+// matchPriority lists fields scanned first when reverse-engineering which
+// attribute Netbox's server-side ?q= matched on. Ordered by user intuition:
+// the fields a network engineer would expect to be the "identity" of the
+// resource come first, then the long-form prose fields.
+var matchPriority = []string{
+	"name", "display",
+	"address", "prefix", "vid",
+	"slug", "asset_tag", "serial",
+	"description", "comments",
+	"label", "title",
+}
+
+// findMatchedField scans a Netbox object's JSON for a case-insensitive
+// substring match on query and returns the (field, value) pair that hit.
+// Walks the priority list first (most useful answer up top), then every
+// other top-level string, then one level into nested {name, display}
+// references like tenant or site. Returns ("", "") on no match — which
+// means Netbox matched something we don't surface (custom fields, tags,
+// related object beyond one hop).
+func findMatchedField(raw json.RawMessage, query string) (string, string) {
+	if query == "" || len(raw) == 0 {
+		return "", ""
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return "", ""
+	}
+	needle := strings.ToLower(query)
+
+	// Priority pass: well-known identity-ish fields.
+	for _, f := range matchPriority {
+		if s, ok := stringAt(obj, f); ok && strings.Contains(strings.ToLower(s), needle) {
+			return f, s
+		}
+	}
+	// Sweep every other top-level string.
+	for k, v := range obj {
+		s, ok := v.(string)
+		if !ok || s == "" {
+			continue
+		}
+		if strings.Contains(strings.ToLower(s), needle) {
+			return k, s
+		}
+	}
+	// One hop into nested refs ({tenant: {name: "..."}}).
+	for k, v := range obj {
+		nested, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, inner := range []string{"name", "display"} {
+			if s, ok := stringAt(nested, inner); ok && strings.Contains(strings.ToLower(s), needle) {
+				return k + "." + inner, s
+			}
+		}
+	}
+	return "", ""
+}
+
+// stringAt is a small typed helper for "give me obj[k] as a string if it is one."
+func stringAt(obj map[string]any, k string) (string, bool) {
+	v, ok := obj[k]
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
 }
 
 // SearchFetcher binds opts to a PageFetcher so streaming and ListAll work the
