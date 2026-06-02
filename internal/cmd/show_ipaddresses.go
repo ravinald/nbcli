@@ -21,7 +21,7 @@ var ipAddressKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "tenant", Description: "tenant slug"},
 	{Name: "device", Description: "assigned device name"},
 	{Name: "vm", Description: "assigned VM name"},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 func newShowIPAddressesCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -59,7 +59,7 @@ func newShowIPAddressesCmd(io IO) *cobra.Command {
 			}
 			cols := resolveColumns(cmd, "ip-addresses")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "IP Addresses", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit

@@ -23,7 +23,7 @@ var deviceKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "model", Description: "device-type slug"},
 	{Name: "location", Description: "location slug"},
 	{Name: "tag", Description: "tag slug"},
-}, cmdutils.PaginationKeywords()...)
+}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
 
 func newShowDevicesCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -65,7 +65,7 @@ func newShowDevicesCmd(io IO) *cobra.Command {
 
 			cols := resolveColumns(cmd, "devices")
 
-			if interactiveFlag(cmd) {
+			if kv["pager"] == "true" {
 				return runPager(io, "Devices", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
 					listOpts := opts
 					listOpts.Offset, listOpts.Limit = po.Offset, po.Limit

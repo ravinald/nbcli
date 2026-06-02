@@ -19,7 +19,7 @@ jobs:
     name: goreleaser
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           # GoReleaser needs the full history + tags to compute changelog.
           fetch-depth: 0
@@ -33,7 +33,7 @@ jobs:
         uses: anchore/sbom-action/download-syft@v0
 
       - name: goreleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "~> v2"
