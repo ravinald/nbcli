@@ -1,35 +1,42 @@
-// Package netbox · global-search support via GraphQL.
+// Package netbox · global-search support.
 //
-// Netbox has no server-side cross-resource search exposed via REST (the
-// /api/search/ path is a 404 — the web UI's search is Django-only). Netbox
-// 4.x exposes a GraphQL endpoint at /api/graphql/ that natively supports
-// batched cross-resource queries, which is the right tool for `search all`:
+// Netbox has no /api/search/ endpoint (the web UI's search is Django-only).
+// nbcli's `search all` reaches across resources two ways depending on what
+// the operator has enabled:
 //
-//   - One HTTP request instead of 12 parallel REST fan-outs.
-//   - Server-side batching; lower latency on high-latency Netbox connections.
-//   - Smaller payload — we ask for only the fields we render.
+//  1. GraphQL (preferred): one POST to /api/graphql/ that batches every
+//     list_field. Lower latency, less server load, smaller payload.
+//  2. REST fan-out (fallback): 12 parallel ?q= calls to the typed list
+//     endpoints. Used automatically when /api/graphql/ returns 404 — some
+//     deployments disable GraphQL for security or operational reasons.
 //
-// `nbcli search <module> <key>` still routes through the typed ListXxx
-// REST methods with Extra["q"]. Only `nbcli search all <key>` uses GraphQL.
+// The choice is per-Client and cached after the first GraphQL probe so
+// subsequent searches in the same process skip the 404 round-trip.
+//
+// Per-module `search <module> <key>` always uses the typed REST endpoint
+// directly; this file only matters for the `all` form.
 package netbox
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // SearchResult is one hit from the cross-resource global search.
 //
 // Type is the dotted Netbox object type (e.g. "dcim.site"). Object holds
 // the rendered fields as JSON ({id, display, url}) so column extractors
-// can decode the same shim regardless of which Netbox type backed the hit.
-// Field/Value carry the matched-attribute pair Netbox returns from its
-// /api/search/ endpoint when available; GraphQL doesn't surface those
-// today, so for v1 they stay empty for fan-out-style results.
+// can decode the same shim regardless of which backend produced the hit.
+// Field/Value are reserved for future use (Netbox's /api/search/ would
+// have populated them); GraphQL and REST fan-out leave them empty.
 type SearchResult struct {
 	Type       string          `json:"object_type"`
 	Object     json.RawMessage `json:"object"`
@@ -44,14 +51,14 @@ type SearchOptions struct {
 	Q      string     // free-text query
 	Limit  int        // page size of the aggregated view
 	Offset int        // offset into the aggregated view
-	Extra  url.Values // reserved for future per-call extensions
+	Extra  url.Values // forwarded to every REST fan-out request (ignored by GraphQL)
 }
 
-// SearchType describes one Netbox resource included in the global GraphQL
-// query. Dotted lands on SearchResult.Type. ListField is the GraphQL list
-// query field name (Netbox 4.x snake_case convention: `Model` → `model_list`).
-// RESTPath is the REST path prefix the client synthesizes the URL with,
-// since GraphQL doesn't expose object URLs directly.
+// SearchType describes one Netbox resource included in the global search.
+// Dotted lands on SearchResult.Type. ListField is the GraphQL list field
+// name (Netbox 4.x snake_case convention: `Model` → `model_list`). RESTPath
+// is the typed list endpoint used both for synthesizing URLs in GraphQL
+// hits and for the REST fan-out fallback.
 type SearchType struct {
 	Dotted    string
 	ListField string
@@ -59,8 +66,9 @@ type SearchType struct {
 }
 
 // SearchTypes is the registry of resources `search all` covers. Exported so
-// tests and callers can introspect the schema (e.g. to confirm a new resource
-// is wired in). Order is stable so result ordering across runs is reproducible.
+// tests and operators can introspect the schema. Adding a row here extends
+// both the GraphQL query (built at init from this list) and the REST
+// fan-out target set.
 var SearchTypes = []SearchType{
 	{"dcim.site", "site_list", "/api/dcim/sites/"},
 	{"dcim.rack", "rack_list", "/api/dcim/racks/"},
@@ -76,10 +84,56 @@ var SearchTypes = []SearchType{
 	{"virtualization.cluster", "cluster_list", "/api/virtualization/clusters/"},
 }
 
+// restFanoutCap bounds what one endpoint contributes to the aggregate when
+// REST fan-out is in use. 100 keeps the fan-out latency reasonable while
+// still letting a moderately wide search browse with the pager.
+const restFanoutCap = 100
+
+// Search dispatches a global search across every type in SearchTypes. Tries
+// GraphQL first; on 404 (GraphQL disabled), falls back to REST fan-out and
+// remembers the choice for subsequent calls on this Client.
+func (c *Client) Search(ctx context.Context, opts SearchOptions) (Page[SearchResult], error) {
+	if opts.Q == "" {
+		return Page[SearchResult]{}, nil
+	}
+	if c.searchUsesREST.Load() {
+		return c.searchREST(ctx, opts)
+	}
+	page, err := c.searchGraphQL(ctx, opts)
+	if isGraphQLDisabled(err) {
+		c.searchUsesREST.Store(true)
+		slog.InfoContext(ctx, "netbox: GraphQL endpoint returned 404; falling back to REST fan-out for `search all`")
+		return c.searchREST(ctx, opts)
+	}
+	return page, err
+}
+
+// isGraphQLDisabled returns true if err is a 404 from the GraphQL endpoint —
+// the signal that the operator has disabled GraphQL on this Netbox.
+func isGraphQLDisabled(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
+}
+
+// SearchFetcher binds opts to a PageFetcher so streaming and ListAll work the
+// same as for every other resource. The backend (GraphQL vs REST fan-out) is
+// chosen on each underlying Search call but cached on the Client after the
+// first decision.
+func (c *Client) SearchFetcher(opts SearchOptions) PageFetcher[SearchResult] {
+	return func(ctx context.Context, offset, limit int) (Page[SearchResult], error) {
+		opts.Offset = offset
+		opts.Limit = limit
+		return c.Search(ctx, opts)
+	}
+}
+
+// --- GraphQL backend -------------------------------------------------------
+
 // searchQuery is the static GraphQL document built once at init from
-// SearchTypes. One document covers every resource; Netbox batches the work
-// server-side and returns a single response. Adding a new resource to
-// SearchTypes automatically extends the query.
+// SearchTypes. One document covers every resource; Netbox batches server-side.
 var searchQuery = buildSearchQuery()
 
 func buildSearchQuery() string {
@@ -92,49 +146,30 @@ func buildSearchQuery() string {
 	return b.String()
 }
 
-// graphqlRequest is the standard GraphQL POST payload.
 type graphqlRequest struct {
 	Query     string         `json:"query"`
 	Variables map[string]any `json:"variables"`
 }
 
-// graphqlError is one entry from the GraphQL `errors` array.
 type graphqlError struct {
 	Message string `json:"message"`
 	Path    []any  `json:"path,omitempty"`
 }
 
-// graphqlResponse is what Netbox returns from /api/graphql/. Data is keyed
-// by the field name we requested (e.g. "device_list"); each value is the
-// list of objects for that type as raw JSON.
 type graphqlResponse struct {
 	Data   map[string]json.RawMessage `json:"data"`
 	Errors []graphqlError             `json:"errors,omitempty"`
 }
 
-// Search runs the cross-resource global search via /api/graphql/ and returns
-// one merged page. Offset and Limit slice the aggregated view client-side.
-// Count is the sum of returned-row counts across types (not Netbox's true
-// per-type totals — GraphQL doesn't expose those without a separate query).
-//
-// Partial type errors are silently dropped — if `device_list` 500s but the
-// rest succeed, the user gets the survivors. An error is returned only when
-// the GraphQL response has no `data` at all.
-func (c *Client) Search(ctx context.Context, opts SearchOptions) (Page[SearchResult], error) {
-	if opts.Q == "" {
-		return Page[SearchResult]{}, nil
-	}
+func (c *Client) searchGraphQL(ctx context.Context, opts SearchOptions) (Page[SearchResult], error) {
 	body := graphqlRequest{
 		Query:     searchQuery,
 		Variables: map[string]any{"q": opts.Q},
 	}
 	var resp graphqlResponse
 	if err := c.Do(ctx, "POST", "/api/graphql/", nil, body, &resp); err != nil {
-		return Page[SearchResult]{}, fmt.Errorf("search graphql: %w", err)
+		return Page[SearchResult]{}, err
 	}
-
-	// All-types-failed: surface the joined error messages so the user sees
-	// what GraphQL is complaining about (schema drift, permission errors, ...).
 	if len(resp.Data) == 0 && len(resp.Errors) > 0 {
 		msgs := make([]string, len(resp.Errors))
 		for i, e := range resp.Errors {
@@ -151,7 +186,6 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) (Page[SearchRes
 		}
 		var rows []map[string]any
 		if err := json.Unmarshal(raw, &rows); err != nil {
-			// Schema drift on one type shouldn't kill the whole search.
 			continue
 		}
 		for _, row := range rows {
@@ -164,22 +198,11 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) (Page[SearchRes
 			all = append(all, SearchResult{Type: t.Dotted, Object: obj})
 		}
 	}
-
-	totalAcross := len(all)
-	start := opts.Offset
-	if start > len(all) {
-		start = len(all)
-	}
-	end := len(all)
-	if opts.Limit > 0 && start+opts.Limit < end {
-		end = start + opts.Limit
-	}
-	return Page[SearchResult]{Count: totalAcross, Results: all[start:end]}, nil
+	return sliceAggregate(all, opts.Offset, opts.Limit), nil
 }
 
-// normalizeIDAndDisplay pulls the canonical id (int) and display (string)
-// out of a GraphQL row. GraphQL spec serializes IDs as strings; some Netbox
-// builds emit numbers. Accept both.
+// normalizeIDAndDisplay handles GraphQL ID coercion. The spec says IDs serialize
+// as strings; some Netbox builds emit numbers. Accept both.
 func normalizeIDAndDisplay(row map[string]any) (int, string) {
 	var id int
 	switch v := row["id"].(type) {
@@ -194,15 +217,80 @@ func normalizeIDAndDisplay(row map[string]any) (int, string) {
 	return id, display
 }
 
-// SearchFetcher binds opts to a PageFetcher so streaming and ListAll work
-// the same as for every other resource. Note: streaming a global search
-// re-runs the whole GraphQL query per page (no cross-call caching), so
-// `limit 0` on `search all` re-fetches every iteration — usually cheap
-// since the response is one request, but worth knowing.
-func (c *Client) SearchFetcher(opts SearchOptions) PageFetcher[SearchResult] {
-	return func(ctx context.Context, offset, limit int) (Page[SearchResult], error) {
-		opts.Offset = offset
-		opts.Limit = limit
-		return c.Search(ctx, opts)
+// --- REST fan-out fallback -------------------------------------------------
+
+// searchREST fans the query across every typed REST endpoint in SearchTypes
+// in parallel. Used when GraphQL is disabled on the Netbox instance.
+func (c *Client) searchREST(ctx context.Context, opts SearchOptions) (Page[SearchResult], error) {
+	perLimit := opts.Offset + opts.Limit
+	if perLimit <= 0 {
+		perLimit = 50
 	}
+	if perLimit > restFanoutCap {
+		perLimit = restFanoutCap
+	}
+
+	type fanResult struct {
+		Type    string
+		Results []SearchResult
+		Err     error
+	}
+	out := make(chan fanResult, len(SearchTypes))
+	var wg sync.WaitGroup
+	for _, t := range SearchTypes {
+		wg.Add(1)
+		go func(t SearchType) {
+			defer wg.Done()
+			q := url.Values{}
+			for k, v := range opts.Extra {
+				q[k] = v
+			}
+			q.Set("q", opts.Q)
+			q.Set("limit", strconv.Itoa(perLimit))
+
+			var page Page[json.RawMessage]
+			if err := c.Do(ctx, "GET", t.RESTPath, q, nil, &page); err != nil {
+				out <- fanResult{Type: t.Dotted, Err: fmt.Errorf("%s: %w", t.Dotted, err)}
+				return
+			}
+			results := make([]SearchResult, len(page.Results))
+			for i, raw := range page.Results {
+				results[i] = SearchResult{Type: t.Dotted, Object: raw}
+			}
+			out <- fanResult{Type: t.Dotted, Results: results}
+		}(t)
+	}
+	wg.Wait()
+	close(out)
+
+	all := make([]SearchResult, 0, len(SearchTypes)*perLimit)
+	var errs []error
+	for r := range out {
+		if r.Err != nil {
+			errs = append(errs, r.Err)
+			continue
+		}
+		all = append(all, r.Results...)
+	}
+	if len(all) == 0 && len(errs) > 0 {
+		return Page[SearchResult]{}, errors.Join(errs...)
+	}
+	return sliceAggregate(all, opts.Offset, opts.Limit), nil
+}
+
+// --- shared ----------------------------------------------------------------
+
+// sliceAggregate applies offset/limit to a pre-aggregated result set.
+// Count reflects the total before slicing so the pager shows accurate totals.
+func sliceAggregate(all []SearchResult, offset, limit int) Page[SearchResult] {
+	total := len(all)
+	start := offset
+	if start > total {
+		start = total
+	}
+	end := total
+	if limit > 0 && start+limit < end {
+		end = start + limit
+	}
+	return Page[SearchResult]{Count: total, Results: all[start:end]}
 }

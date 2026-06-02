@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -45,6 +46,11 @@ type Client struct {
 	baseURL    *url.URL
 	authHeader string // pre-built "Bearer <tok>" or "Token <tok>"
 	httpClient *http.Client
+
+	// searchUsesREST is set true after the GraphQL endpoint returns 404,
+	// indicating the operator disabled GraphQL on this Netbox. Subsequent
+	// Search calls skip the GraphQL probe and go straight to REST fan-out.
+	searchUsesREST atomic.Bool
 }
 
 // Options configures a Client.

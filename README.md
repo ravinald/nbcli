@@ -16,7 +16,7 @@ Working surface:
 - `nbcli show sites [keyword value]...` — list DCIM sites
 - `nbcli show tenants [keyword value]...` — list tenants
 - `nbcli show contacts [keyword value]...` — list contacts
-- `nbcli search [all|<module>] <key> [limit value] [pager]` — free-text search (per-module via `?q=`, `all` via Netbox's GraphQL endpoint)
+- `nbcli search [all|<module>] <key> [limit value] [pager]` — free-text search (per-module via `?q=`; `all` tries GraphQL, auto-falls-back to REST fan-out when GraphQL is disabled)
 - `nbcli tui` — bubbletea shell; **Tenants** and **Contacts** items render live tables; other items are placeholders
 - `nbcli plugin passthrough <name> <subpath> [key value ...]` — raw forward to `/api/plugins/<name>/...`
 - `nbcli plugin list` — show compiled-in named plugins
@@ -56,7 +56,7 @@ nbcli search all hq                   # cross-resource via /api/search/
 nbcli search all hq pager             # interactive pager
 ```
 
-`search <module> <key>` uses the same column set as `show <module>` (REST `?q=`). `search all <key>` batches a single GraphQL query against `/api/graphql/` covering every Netbox resource type and renders results in a four-column view:
+`search <module> <key>` uses the same column set as `show <module>` (REST `?q=`). `search all <key>` prefers Netbox's `/api/graphql/` for a batched single-request cross-resource query; when GraphQL is disabled on the instance (returns 404), it auto-falls-back to a parallel REST fan-out across the same resource set. The choice is cached per client. Either way, results render in a four-column view:
 
 ```
 TYPE              FIELD         VALUE         DISPLAY

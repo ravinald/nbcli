@@ -211,3 +211,84 @@ func TestBuildSearchQuery_StaysInSyncWithSearchTypes(t *testing.T) {
 	}
 	assert.True(t, strings.HasPrefix(q, "query GlobalSearch"), "expected named operation")
 }
+
+// --- REST fallback + dispatcher --------------------------------------------
+
+// mixedServer fakes a Netbox where /api/graphql/ returns 404 (GraphQL off)
+// but every REST list endpoint works. Mirrors the failure mode reported on
+// netbox.scale.internal v4.5.5.
+func mixedServer(t *testing.T) (*httptest.Server, *atomic.Int32, *atomic.Int32) {
+	t.Helper()
+	var graphqlHits, restHits atomic.Int32
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/graphql/", func(w http.ResponseWriter, _ *http.Request) {
+		graphqlHits.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("<!DOCTYPE html><html>404</html>"))
+	})
+	for _, st := range SearchTypes {
+		mux.HandleFunc(st.RESTPath, func(w http.ResponseWriter, r *http.Request) {
+			restHits.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			obj, _ := json.Marshal(map[string]any{
+				"id":      1,
+				"display": st.Dotted + "-rest-hit",
+				"url":     st.RESTPath + "1/",
+			})
+			_ = json.NewEncoder(w).Encode(Page[json.RawMessage]{
+				Count: 1, Results: []json.RawMessage{obj},
+			})
+		})
+	}
+	return httptest.NewServer(mux), &graphqlHits, &restHits
+}
+
+func TestSearch_FallsBackToRESTWhenGraphQL404s(t *testing.T) {
+	t.Parallel()
+	srv, graphqlHits, restHits := mixedServer(t)
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL, Token: "t"})
+	require.NoError(t, err)
+
+	page, err := c.Search(context.Background(), SearchOptions{Q: "ravi", Limit: 50})
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), graphqlHits.Load(), "GraphQL probed exactly once")
+	assert.Equal(t, len(SearchTypes), int(restHits.Load()), "REST fan-out across every type")
+	// Aggregate covers every type.
+	assert.Len(t, page.Results, len(SearchTypes))
+}
+
+func TestSearch_CachesRESTChoiceAfterFirst404(t *testing.T) {
+	t.Parallel()
+	srv, graphqlHits, _ := mixedServer(t)
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL, Token: "t"})
+	require.NoError(t, err)
+
+	for i := 0; i < 5; i++ {
+		_, err := c.Search(context.Background(), SearchOptions{Q: "x"})
+		require.NoError(t, err)
+	}
+	assert.Equal(t, int32(1), graphqlHits.Load(),
+		"after the first 404, subsequent calls skip the GraphQL probe")
+}
+
+func TestSearch_NonGraphQLErrorsPropagate(t *testing.T) {
+	t.Parallel()
+	// GraphQL returns 401 (not 404) — this is auth failure, NOT "GraphQL is
+	// off." Must propagate, not fall back, so the user fixes their token.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "bad token", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL, Token: "t"})
+	require.NoError(t, err)
+	_, err = c.Search(context.Background(), SearchOptions{Q: "x"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "401")
+	assert.False(t, c.searchUsesREST.Load(), "401 must not flip the cached choice")
+}
