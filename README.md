@@ -16,7 +16,7 @@ Working surface:
 - `nbcli show sites [keyword value]...` — list DCIM sites
 - `nbcli show tenants [keyword value]...` — list tenants
 - `nbcli show contacts [keyword value]...` — list contacts
-- `nbcli search [all|<module>] <key> [limit value] [pager]` — free-text search (per-module via `?q=`, `all` via `/api/search/`)
+- `nbcli search [all|<module>] <key> [limit value] [pager]` — free-text search (per-module via `?q=`, `all` via Netbox's GraphQL endpoint)
 - `nbcli tui` — bubbletea shell; **Tenants** and **Contacts** items render live tables; other items are placeholders
 - `nbcli plugin passthrough <name> <subpath> [key value ...]` — raw forward to `/api/plugins/<name>/...`
 - `nbcli plugin list` — show compiled-in named plugins
@@ -56,7 +56,7 @@ nbcli search all hq                   # cross-resource via /api/search/
 nbcli search all hq pager             # interactive pager
 ```
 
-`search <module> <key>` uses the same column set as `show <module>`. `search all <key>` uses a four-column view (`type`, `field`, `value`, `display`) that tells you **what** matched and **why** at a glance:
+`search <module> <key>` uses the same column set as `show <module>` (REST `?q=`). `search all <key>` batches a single GraphQL query against `/api/graphql/` covering every Netbox resource type and renders results in a four-column view:
 
 ```
 TYPE              FIELD         VALUE         DISPLAY
