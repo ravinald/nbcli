@@ -23,7 +23,10 @@ jobs:
           cache: true
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.5.0
+          # Must be ≥ the Go version in go.mod's `go` directive — the lint
+          # binary refuses to load the config when the project's Go version
+          # exceeds the one it was built with. v2.12.x is built with go1.26.
+          version: v2.12.2
 
   test:
     name: test
