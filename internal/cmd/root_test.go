@@ -148,13 +148,19 @@ func TestExecute_ColumnsPositionalRestrictsHeaders(t *testing.T) {
 }
 
 func TestExecute_FormatPositionalRejectsBadValue(t *testing.T) {
-	t.Parallel()
+	// no t.Parallel() — isolateEnv uses t.Setenv which forbids parallel.
+	isolateEnv(t)
+	srv := newJSONServer(t, "/api/dcim/sites/", `{"count":0,"results":[]}`)
+	defer srv.Close()
+	t.Setenv("NBCLI_URL", srv.URL)
+	t.Setenv("NBCLI_TOKEN", "nbt_a.b")
+
 	io, _, errb := makeIO()
 	code := cmd.Execute([]string{"show", "sites", "format", "xml"}, io)
 	require.NotEqual(t, 0, code)
-	// Error comes from output.Parse since "xml" isn't a known format.
-	// (Validator allowed it through — Values is a completion hint, not a
-	// hard whitelist.)
+	// output.Parse surfaces the bad format. (Validator allowed "xml" through
+	// because Values on a KeywordSpec is a completion hint, not a hard
+	// whitelist — keeps the parser tolerant of new server-side enums.)
 	assert.Contains(t, errb.String(), "format")
 }
 
