@@ -90,6 +90,7 @@ func NewRootCmd(io IO) *cobra.Command {
 	root.AddCommand(
 		newVersionCmd(io),
 		newShowCmd(io),
+		newSearchCmd(io),
 		newTUICmd(io),
 		newPluginCmd(io),
 		newColumnsCmd(io),

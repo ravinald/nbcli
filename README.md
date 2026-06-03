@@ -16,6 +16,7 @@ Working surface:
 - `nbcli show sites [keyword value]...` — list DCIM sites
 - `nbcli show tenants [keyword value]...` — list tenants
 - `nbcli show contacts [keyword value]...` — list contacts
+- `nbcli search [all|<module>] <key> [limit value] [pager]` — free-text search (per-module via `?q=`; `all` fans out across every typed endpoint)
 - `nbcli tui` — bubbletea shell; **Tenants** and **Contacts** items render live tables; other items are placeholders
 - `nbcli plugin passthrough <name> <subpath> [key value ...]` — raw forward to `/api/plugins/<name>/...`
 - `nbcli plugin list` — show compiled-in named plugins
@@ -44,6 +45,25 @@ Error: unknown keyword "foo" (expected one of: limit, name, offset, region, slug
 ```
 
 The parser lives in [`internal/cmdutils/positional_args.go`](internal/cmdutils/positional_args.go). Add a new resource command by declaring its `[]cmdutils.KeywordSpec` and handing it to `Validator()`, `UsageLine()`, `HelpTable()`, and `CompletionFunc()`.
+
+## Search
+
+```sh
+nbcli search sites hq                 # one resource, ?q=hq
+nbcli search ip-addresses 10.0.0      # IPAM, ?q=10.0.0
+nbcli search vrfs prod limit 200      # explicit page size
+nbcli search all hq                   # cross-resource via /api/search/
+nbcli search all hq pager             # interactive pager
+```
+
+`search <module> <key>` uses the same column set as `show <module>` (REST `?q=`). `search all <key>` fans out across every typed REST list endpoint in parallel with `?q=<key>`, then merges the hits. (Netbox 4.x GraphQL doesn't expose a `q` free-text filter — only per-field operators like `i_contains` — so REST `?q=` is the only path to true cross-field search.) Results render in a four-column view:
+
+```
+TYPE              FIELD         VALUE         DISPLAY
+dcim.site         name          hq            HQ
+dcim.device       comments      hq backup     edge-1
+ipam.ipaddress    description   hq mgmt       10.0.0.1/24
+```
 
 ## Install
 
