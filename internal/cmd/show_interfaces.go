@@ -24,7 +24,7 @@ var interfaceKeywords = append([]cmdutils.KeywordSpec{
 		Values: []string{"true", "false"}},
 	{Name: "mgmt_only", Description: "true|false",
 		Values: []string{"true", "false"}},
-}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
+}, cmdutils.TrailingKeywords()...)
 
 func newShowInterfacesCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -71,7 +71,7 @@ func newShowInterfacesCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := resolveColumns(cmd, "interfaces")
+			cols := resolveColumns(cmd, "interfaces", kv)
 
 			if kv["pager"] == "true" {
 				return runPager(io, "Interfaces", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
@@ -88,13 +88,13 @@ func newShowInterfacesCmd(io IO) *cobra.Command {
 
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
-				return renderStreaming[netbox.Interface](cmd, io, client.InterfacesFetcher(opts), iterOpts, cols)
+				return renderStreaming[netbox.Interface](cmd, io, client.InterfacesFetcher(opts), iterOpts, cols, kv)
 			}
 			page, err := client.ListInterfaces(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
-			return renderRows(cmd, io, page.Results, cols)
+			return renderRows(cmd, io, page.Results, cols, kv)
 		},
 	}
 }

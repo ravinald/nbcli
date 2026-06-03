@@ -16,7 +16,7 @@ var contactKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "email", Description: "email address"},
 	{Name: "phone", Description: "phone number"},
 	{Name: "group", Description: "contact group slug"},
-}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
+}, cmdutils.TrailingKeywords()...)
 
 func newShowContactsCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -50,7 +50,7 @@ func newShowContactsCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := resolveColumns(cmd, "contacts")
+			cols := resolveColumns(cmd, "contacts", kv)
 
 			if kv["pager"] == "true" {
 				return runPager(io, "Contacts", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
@@ -67,13 +67,13 @@ func newShowContactsCmd(io IO) *cobra.Command {
 
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
-				return renderStreaming[netbox.Contact](cmd, io, client.ContactsFetcher(opts), iterOpts, cols)
+				return renderStreaming[netbox.Contact](cmd, io, client.ContactsFetcher(opts), iterOpts, cols, kv)
 			}
 			page, err := client.ListContacts(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
-			return renderRows(cmd, io, page.Results, cols)
+			return renderRows(cmd, io, page.Results, cols, kv)
 		},
 	}
 }

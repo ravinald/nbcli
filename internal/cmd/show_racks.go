@@ -19,7 +19,7 @@ var rackKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "role", Description: "rack role slug"},
 	{Name: "location", Description: "location slug"},
 	{Name: "tenant", Description: "tenant slug"},
-}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
+}, cmdutils.TrailingKeywords()...)
 
 func newShowRacksCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -54,7 +54,7 @@ func newShowRacksCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := resolveColumns(cmd, "racks")
+			cols := resolveColumns(cmd, "racks", kv)
 
 			if kv["pager"] == "true" {
 				return runPager(io, "Racks", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
@@ -71,13 +71,13 @@ func newShowRacksCmd(io IO) *cobra.Command {
 
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
-				return renderStreaming[netbox.Rack](cmd, io, client.RacksFetcher(opts), iterOpts, cols)
+				return renderStreaming[netbox.Rack](cmd, io, client.RacksFetcher(opts), iterOpts, cols, kv)
 			}
 			page, err := client.ListRacks(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
-			return renderRows(cmd, io, page.Results, cols)
+			return renderRows(cmd, io, page.Results, cols, kv)
 		},
 	}
 }

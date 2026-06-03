@@ -12,19 +12,17 @@ import (
 	"github.com/ravinald/nbcli/internal/output"
 )
 
-// resolveColumns picks the column set for resource using (in priority order):
-// the --columns flag, the user's config.Columns[resource] override, and the
-// registry's Default-flagged columns. Adapts columns.Column to output.Column
-// so the existing renderers (table/json/yaml/tsv) just work.
-func resolveColumns(cmd *cobra.Command, resource string) []output.Column {
+// resolveColumns picks the column set for resource. Precedence (highest first):
+//
+//  1. positional kv["columns"] — `nbcli show sites columns id,name,status`
+//  2. cfg.Columns[resource] from config.yaml (and NBCLI_FORMAT-like env via viper)
+//  3. the registry's Default-flagged columns
+//
+// Adapts columns.Column to output.Column so the existing renderers just work.
+func resolveColumns(cmd *cobra.Command, resource string, kv map[string]string) []output.Column {
 	var override []string
-	if flag := cmd.Flags().Lookup("columns"); flag != nil && flag.Changed {
-		raw, _ := cmd.Flags().GetString("columns")
-		for _, n := range strings.Split(raw, ",") {
-			if n = strings.TrimSpace(n); n != "" {
-				override = append(override, n)
-			}
-		}
+	if v := kv["columns"]; v != "" {
+		override = splitColumns(v)
 	} else if cfg := configFromCtx(cmd.Context()); cfg.Columns != nil {
 		override = cfg.Columns[resource]
 	}
@@ -36,20 +34,44 @@ func resolveColumns(cmd *cobra.Command, resource string) []output.Column {
 	return out
 }
 
-// renderRows centralizes the boilerplate at the tail of every `show <resource>`
-// command: read the resolved format off config, build the renderer, write to
-// io.Out. Pulled out so adding a new resource is just columns + a slice.
+// splitColumns parses a comma-separated column list, trimming whitespace and
+// dropping empties. Tolerant of trailing commas and surrounding spaces.
+func splitColumns(raw string) []string {
+	var out []string
+	for _, n := range strings.Split(raw, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// resolveFormat picks the output format. Same precedence as resolveColumns:
 //
-// Two non-trivial responsibilities: format resolution (explicit flag / env /
-// config / TTY-implicit) and renderer dispatch. The previous per-command
-// inline version was identical ~25 lines, so this is a pure dedup.
-func renderRows(cmd *cobra.Command, io IO, rows any, cols []output.Column) error {
+//  1. positional kv["format"]
+//  2. cfg.Format / NBCLI_FORMAT env
+//  3. auto-detect from stdout (TTY → table, else json)
+func resolveFormat(cmd *cobra.Command, io IO, kv map[string]string) (output.Format, error) {
 	cfg := configFromCtx(cmd.Context())
-	explicit, err := output.Parse(cfg.Format)
+	raw := cfg.Format
+	if v := kv["format"]; v != "" {
+		raw = v
+	}
+	explicit, err := output.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	return output.Resolve(explicit, io.Out), nil
+}
+
+// renderRows centralizes the boilerplate at the tail of every `show <resource>`
+// command: pick the format, build the renderer, write to io.Out. kv carries
+// any positional presentation overrides (format / columns).
+func renderRows(cmd *cobra.Command, io IO, rows any, cols []output.Column, kv map[string]string) error {
+	format, err := resolveFormat(cmd, io, kv)
 	if err != nil {
 		return err
 	}
-	format := output.Resolve(explicit, io.Out)
 	r, err := output.New(format)
 	if err != nil {
 		return err
@@ -61,24 +83,23 @@ func renderRows(cmd *cobra.Command, io IO, rows any, cols []output.Column) error
 // renderer told us to stop. Never propagated up to the user.
 var errStopIteration = errors.New("render: stream consumer halted")
 
-// renderStreaming is the fetchAll counterpart to renderRows. When the
-// resolved format implements output.StreamingRenderer (json, yaml, tsv) and
-// isn't table, rows are written as they arrive from netbox.Iterate — memory
-// stays O(1) and the user sees output incrementally. Otherwise we fall back
-// to the batch path (table needs all rows to align columns).
+// renderStreaming is the fetchAll counterpart to renderRows. When the resolved
+// format implements output.StreamingRenderer (json, yaml, tsv) and isn't
+// table, rows write as they arrive from netbox.Iterate — memory stays O(1)
+// and the user sees output incrementally. Otherwise falls back to the batch
+// path (table needs all rows to align columns).
 func renderStreaming[T any](
 	cmd *cobra.Command,
 	io IO,
 	fetcher netbox.PageFetcher[T],
 	iterOpts netbox.IterateOptions,
 	cols []output.Column,
+	kv map[string]string,
 ) error {
-	cfg := configFromCtx(cmd.Context())
-	explicit, err := output.Parse(cfg.Format)
+	format, err := resolveFormat(cmd, io, kv)
 	if err != nil {
 		return err
 	}
-	format := output.Resolve(explicit, io.Out)
 	r, err := output.New(format)
 	if err != nil {
 		return err

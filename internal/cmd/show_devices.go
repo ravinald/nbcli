@@ -23,7 +23,7 @@ var deviceKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "model", Description: "device-type slug"},
 	{Name: "location", Description: "location slug"},
 	{Name: "tag", Description: "tag slug"},
-}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
+}, cmdutils.TrailingKeywords()...)
 
 func newShowDevicesCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -63,7 +63,7 @@ func newShowDevicesCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := resolveColumns(cmd, "devices")
+			cols := resolveColumns(cmd, "devices", kv)
 
 			if kv["pager"] == "true" {
 				return runPager(io, "Devices", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
@@ -80,13 +80,13 @@ func newShowDevicesCmd(io IO) *cobra.Command {
 
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
-				return renderStreaming[netbox.Device](cmd, io, client.DevicesFetcher(opts), iterOpts, cols)
+				return renderStreaming[netbox.Device](cmd, io, client.DevicesFetcher(opts), iterOpts, cols, kv)
 			}
 			page, err := client.ListDevices(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
-			return renderRows(cmd, io, page.Results, cols)
+			return renderRows(cmd, io, page.Results, cols, kv)
 		},
 	}
 }

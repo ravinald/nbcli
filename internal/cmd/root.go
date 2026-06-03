@@ -40,12 +40,13 @@ type IO struct {
 // StdIO returns IO bound to the real process streams.
 func StdIO() IO { return IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr} }
 
-// rootOptions holds the persistent flags resolved by viper.
+// rootOptions holds the persistent flags resolved by viper. Presentation
+// modifiers (format / columns / pager) are positional, not flags — those
+// live on the show/search commands' positional grammar.
 type rootOptions struct {
 	configFile string
 	envFile    string
 	url        string
-	format     string
 	authScheme string
 	timeout    time.Duration
 	insecure   bool
@@ -69,11 +70,9 @@ func NewRootCmd(io IO) *cobra.Command {
 	root.PersistentFlags().StringVar(&opts.configFile, "config", "", "path to config file (default: $XDG_CONFIG_HOME/nbcli/config.yaml)")
 	root.PersistentFlags().StringVar(&opts.envFile, "env-file", "", "additional env file (overlays ~/.config/nbcli/secrets.env and ~/.env.netbox)")
 	root.PersistentFlags().StringVar(&opts.url, "url", "", "Netbox base URL (env NBCLI_URL)")
-	root.PersistentFlags().StringVar(&opts.format, "format", "", "output format: table|json|yaml|tsv (env NBCLI_FORMAT)")
 	root.PersistentFlags().DurationVar(&opts.timeout, "timeout", 0, "HTTP request timeout (e.g. 10s)")
 	root.PersistentFlags().BoolVar(&opts.insecure, "insecure", false, "skip TLS cert verification (dangerous; dev only)")
 	root.PersistentFlags().StringVar(&opts.authScheme, "auth-scheme", "", "Netbox token auth: v2 (default, Bearer) or v1 (legacy, Token)")
-	root.PersistentFlags().String("columns", "", "comma-separated column names (e.g. id,name,status) — overrides config.yaml")
 	root.PersistentFlags().BoolVarP(&opts.verbose, "verbose", "v", false, "verbose logging to stderr")
 
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {

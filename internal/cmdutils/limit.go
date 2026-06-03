@@ -49,6 +49,51 @@ func PagerKeyword() KeywordSpec {
 	}
 }
 
+// FormatKeyword is the positional `format <value>` keyword every show + search
+// command supports. Junos-shaped output-modifier; wins over cfg.Format /
+// NBCLI_FORMAT. Static enum so shell completion offers the choices.
+func FormatKeyword() KeywordSpec {
+	return KeywordSpec{
+		Name:        "format",
+		Description: "output format (overrides config and NBCLI_FORMAT)",
+		Example:     "json",
+		Values:      []string{"table", "json", "yaml", "tsv"},
+	}
+}
+
+// ColumnsKeyword is the positional `columns <comma-list>` keyword every
+// show + search command supports. Wins over cfg.Columns[resource], which
+// wins over the registry's default-visible set. Values are free-form per
+// resource — `nbcli columns <resource>` lists what's available.
+func ColumnsKeyword() KeywordSpec {
+	return KeywordSpec{
+		Name:        "columns",
+		Description: "comma-separated column names (overrides config)",
+		Example:     "id,name,status",
+	}
+}
+
+// PresentationKeywords returns the trio every show + search command appends:
+// format (value), columns (value), pager (switch). Bundled because they
+// always travel together and adding a new presentation modifier should touch
+// one place.
+func PresentationKeywords() []KeywordSpec {
+	return []KeywordSpec{
+		FormatKeyword(),
+		ColumnsKeyword(),
+		PagerKeyword(),
+	}
+}
+
+// TrailingKeywords is the standard tail every show + search command appends
+// to its resource-specific filters: pagination (limit/offset) + presentation
+// (format/columns/pager). One call site keeps the trailing grammar uniform
+// across the CLI surface.
+func TrailingKeywords() []KeywordSpec {
+	out := PaginationKeywords()
+	return append(out, PresentationKeywords()...)
+}
+
 // ApplyLimitOffset parses the "limit" and "offset" keywords out of kv into
 // *limit and *offset. Convention used by every `show` command:
 //

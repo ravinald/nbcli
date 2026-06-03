@@ -11,7 +11,7 @@ func newShowCmd(io IO) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "Show Netbox resources",
-		Long:  "Read-only queries against Netbox. Combine with --format json|yaml|tsv for machine output.",
+		Long:  "Read-only queries against Netbox. Append `format json|yaml|tsv` to any subcommand for machine output.",
 	}
 	cmd.AddCommand(
 		newShowSitesCmd(io),

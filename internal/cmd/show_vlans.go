@@ -19,7 +19,7 @@ var vlanKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "status", Description: "status value",
 		Values: []string{"active", "reserved", "deprecated"}},
 	{Name: "tenant", Description: "tenant slug"},
-}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
+}, cmdutils.TrailingKeywords()...)
 
 func newShowVLANsCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -52,7 +52,7 @@ func newShowVLANsCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cols := resolveColumns(cmd, "vlans")
+			cols := resolveColumns(cmd, "vlans", kv)
 
 			if kv["pager"] == "true" {
 				return runPager(io, "VLANs", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
@@ -69,13 +69,13 @@ func newShowVLANsCmd(io IO) *cobra.Command {
 
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
-				return renderStreaming[netbox.VLAN](cmd, io, client.VLANsFetcher(opts), iterOpts, cols)
+				return renderStreaming[netbox.VLAN](cmd, io, client.VLANsFetcher(opts), iterOpts, cols, kv)
 			}
 			page, err := client.ListVLANs(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
-			return renderRows(cmd, io, page.Results, cols)
+			return renderRows(cmd, io, page.Results, cols, kv)
 		},
 	}
 }

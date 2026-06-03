@@ -127,14 +127,12 @@ func Load(flags *pflag.FlagSet, configFile, extraEnvFile string) (Config, error)
 	}
 
 	if flags != nil {
-		// Bind every flag EXCEPT --columns. That flag is a comma-separated
-		// string while the config's `columns:` key is map[string][]string;
-		// binding it via viper conflates the two and unmarshal fails. The
-		// cmd-side resolveColumns helper reads --columns directly from the
-		// cobra flag set, so viper doesn't need to know about it.
+		// Presentation modifiers (format / columns) live on each show + search
+		// command's positional grammar, not as flags, so we don't need a viper
+		// alias for them. Every other persistent flag binds normally.
 		var bindErr error
 		flags.VisitAll(func(f *pflag.Flag) {
-			if bindErr != nil || f.Name == "columns" {
+			if bindErr != nil {
 				return
 			}
 			bindErr = v.BindPFlag(f.Name, f)

@@ -13,14 +13,16 @@ import (
 // newColumnsCmd is `nbcli columns [resource]`. Without an argument it lists
 // every resource the registry knows about; with one, it lists that
 // resource's available column names + headers + default-visibility flag —
-// the menu to choose from when writing config.yaml or using --columns.
+// the menu to choose from when writing config.yaml or using the `columns`
+// positional on a show command.
 func newColumnsCmd(io IO) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "columns [resource]",
 		Short: "List available columns for a resource",
 		Long: "Lists the column menu for a resource (or all resources when called " +
 			"without an argument). Use the names in config.yaml's `columns:` map " +
-			"or in the --columns flag of any `show` subcommand.\n\n" +
+			"or as the value of the `columns` positional on a show/search command " +
+			"(e.g. `nbcli show sites columns id,name,status`).\n\n" +
 			"Examples:\n" +
 			"  nbcli columns                # list all resources\n" +
 			"  nbcli columns sites          # show available columns for sites\n" +
