@@ -14,7 +14,7 @@ var vrfKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "name", Description: "exact VRF name"},
 	{Name: "rd", Description: "route distinguisher"},
 	{Name: "tenant", Description: "tenant slug"},
-}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
+}, cmdutils.TrailingKeywords()...)
 
 func newShowVRFsCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -43,7 +43,7 @@ func newShowVRFsCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cols := resolveColumns(cmd, "vrfs")
+			cols := resolveColumns(cmd, "vrfs", kv)
 
 			if kv["pager"] == "true" {
 				return runPager(io, "VRFs", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
@@ -60,13 +60,13 @@ func newShowVRFsCmd(io IO) *cobra.Command {
 
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
-				return renderStreaming[netbox.VRF](cmd, io, client.VRFsFetcher(opts), iterOpts, cols)
+				return renderStreaming[netbox.VRF](cmd, io, client.VRFsFetcher(opts), iterOpts, cols, kv)
 			}
 			page, err := client.ListVRFs(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
-			return renderRows(cmd, io, page.Results, cols)
+			return renderRows(cmd, io, page.Results, cols, kv)
 		},
 	}
 }

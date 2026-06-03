@@ -34,12 +34,15 @@ import (
 const searchAllKeyword = "all"
 
 // searchTrailingKeywords is the positional grammar allowed after `<module> <key>`.
-// Mirrors the show commands' trailing slice: limit (with optional 0 for stream-all)
-// and pager (switch). Offset is intentionally omitted — the pager handles browsing.
-var searchTrailingKeywords = []cmdutils.KeywordSpec{
-	{Name: cmdutils.LimitKeyword, Description: "page size (0 = stream all pages)", Example: "100"},
-	cmdutils.PagerKeyword(),
-}
+// Mirrors the show commands' trailing slice: limit (with optional 0 for stream-all),
+// presentation modifiers (format/columns/pager). Offset is intentionally omitted —
+// the pager handles browsing.
+var searchTrailingKeywords = append(
+	[]cmdutils.KeywordSpec{
+		{Name: cmdutils.LimitKeyword, Description: "page size (0 = stream all pages)", Example: "100"},
+	},
+	cmdutils.PresentationKeywords()...,
+)
 
 // searchHandler runs one `search <module> ...` invocation. The signature
 // matches every per-module helper below. kv carries the parsed trailing
@@ -173,13 +176,13 @@ func runSearch[T any](
 		return runPager(io, title, cols, pagerFetch)
 	}
 	if fetchAll {
-		return renderStreaming[T](cmd, io, stream, netbox.IterateOptions{PageSize: 100, MaxPages: 200}, cols)
+		return renderStreaming[T](cmd, io, stream, netbox.IterateOptions{PageSize: 100, MaxPages: 200}, cols, kv)
 	}
 	page, err := oneShot(cmd.Context())
 	if err != nil {
 		return err
 	}
-	return renderRows(cmd, io, page.Results, cols)
+	return renderRows(cmd, io, page.Results, cols, kv)
 }
 
 // qExtra builds the url.Values containing only ?q=<query>. Helper so each
@@ -214,7 +217,7 @@ func searchAll(cmd *cobra.Command, io IO, c *netbox.Client, query string, kv map
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "search")
+	cols := resolveColumns(cmd, "search", kv)
 	return runSearch(cmd, io, searchTitle(searchAllKeyword, query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.SearchResult], error) { return c.Search(ctx, opts) },
 		c.SearchFetcher(netbox.SearchOptions{Q: query}),
@@ -239,7 +242,7 @@ func searchSites(cmd *cobra.Command, io IO, c *netbox.Client, query string, kv m
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "sites")
+	cols := resolveColumns(cmd, "sites", kv)
 	return runSearch(cmd, io, searchTitle("sites", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.Site], error) { return c.ListSites(ctx, opts) },
 		c.SitesFetcher(netbox.ListSitesOptions{Extra: qExtra(query)}),
@@ -259,7 +262,7 @@ func searchRacks(cmd *cobra.Command, io IO, c *netbox.Client, query string, kv m
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "racks")
+	cols := resolveColumns(cmd, "racks", kv)
 	return runSearch(cmd, io, searchTitle("racks", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.Rack], error) { return c.ListRacks(ctx, opts) },
 		c.RacksFetcher(netbox.ListRacksOptions{Extra: qExtra(query)}),
@@ -279,7 +282,7 @@ func searchDevices(cmd *cobra.Command, io IO, c *netbox.Client, query string, kv
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "devices")
+	cols := resolveColumns(cmd, "devices", kv)
 	return runSearch(cmd, io, searchTitle("devices", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.Device], error) { return c.ListDevices(ctx, opts) },
 		c.DevicesFetcher(netbox.ListDevicesOptions{Extra: qExtra(query)}),
@@ -299,7 +302,7 @@ func searchInterfaces(cmd *cobra.Command, io IO, c *netbox.Client, query string,
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "interfaces")
+	cols := resolveColumns(cmd, "interfaces", kv)
 	return runSearch(cmd, io, searchTitle("interfaces", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.Interface], error) { return c.ListInterfaces(ctx, opts) },
 		c.InterfacesFetcher(netbox.ListInterfacesOptions{Extra: qExtra(query)}),
@@ -319,7 +322,7 @@ func searchPrefixes(cmd *cobra.Command, io IO, c *netbox.Client, query string, k
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "prefixes")
+	cols := resolveColumns(cmd, "prefixes", kv)
 	return runSearch(cmd, io, searchTitle("prefixes", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.Prefix], error) { return c.ListPrefixes(ctx, opts) },
 		c.PrefixesFetcher(netbox.ListPrefixesOptions{Extra: qExtra(query)}),
@@ -339,7 +342,7 @@ func searchIPAddresses(cmd *cobra.Command, io IO, c *netbox.Client, query string
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "ip-addresses")
+	cols := resolveColumns(cmd, "ip-addresses", kv)
 	return runSearch(cmd, io, searchTitle("ip-addresses", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.IPAddress], error) { return c.ListIPAddresses(ctx, opts) },
 		c.IPAddressesFetcher(netbox.ListIPAddressesOptions{Extra: qExtra(query)}),
@@ -359,7 +362,7 @@ func searchVLANs(cmd *cobra.Command, io IO, c *netbox.Client, query string, kv m
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "vlans")
+	cols := resolveColumns(cmd, "vlans", kv)
 	return runSearch(cmd, io, searchTitle("vlans", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.VLAN], error) { return c.ListVLANs(ctx, opts) },
 		c.VLANsFetcher(netbox.ListVLANsOptions{Extra: qExtra(query)}),
@@ -379,7 +382,7 @@ func searchVRFs(cmd *cobra.Command, io IO, c *netbox.Client, query string, kv ma
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "vrfs")
+	cols := resolveColumns(cmd, "vrfs", kv)
 	return runSearch(cmd, io, searchTitle("vrfs", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.VRF], error) { return c.ListVRFs(ctx, opts) },
 		c.VRFsFetcher(netbox.ListVRFsOptions{Extra: qExtra(query)}),
@@ -399,7 +402,7 @@ func searchTenants(cmd *cobra.Command, io IO, c *netbox.Client, query string, kv
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "tenants")
+	cols := resolveColumns(cmd, "tenants", kv)
 	return runSearch(cmd, io, searchTitle("tenants", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.Tenant], error) { return c.ListTenants(ctx, opts) },
 		c.TenantsFetcher(netbox.ListTenantsOptions{Extra: qExtra(query)}),
@@ -419,7 +422,7 @@ func searchContacts(cmd *cobra.Command, io IO, c *netbox.Client, query string, k
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "contacts")
+	cols := resolveColumns(cmd, "contacts", kv)
 	return runSearch(cmd, io, searchTitle("contacts", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.Contact], error) { return c.ListContacts(ctx, opts) },
 		c.ContactsFetcher(netbox.ListContactsOptions{Extra: qExtra(query)}),
@@ -439,7 +442,7 @@ func searchVMs(cmd *cobra.Command, io IO, c *netbox.Client, query string, kv map
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "virtual-machines")
+	cols := resolveColumns(cmd, "virtual-machines", kv)
 	return runSearch(cmd, io, searchTitle("virtual-machines", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.VirtualMachine], error) { return c.ListVMs(ctx, opts) },
 		c.VMsFetcher(netbox.ListVMsOptions{Extra: qExtra(query)}),
@@ -459,7 +462,7 @@ func searchClusters(cmd *cobra.Command, io IO, c *netbox.Client, query string, k
 	if err != nil {
 		return err
 	}
-	cols := resolveColumns(cmd, "clusters")
+	cols := resolveColumns(cmd, "clusters", kv)
 	return runSearch(cmd, io, searchTitle("clusters", query), cols, kv, fetchAll,
 		func(ctx context.Context) (netbox.Page[netbox.Cluster], error) { return c.ListClusters(ctx, opts) },
 		c.ClustersFetcher(netbox.ListClustersOptions{Extra: qExtra(query)}),

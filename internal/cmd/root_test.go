@@ -3,6 +3,8 @@ package cmd_test
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -17,6 +19,21 @@ import (
 func makeIO() (cmd.IO, *bytes.Buffer, *bytes.Buffer) {
 	var out, errb bytes.Buffer
 	return cmd.IO{In: strings.NewReader(""), Out: &out, Err: &errb}, &out, &errb
+}
+
+// newJSONServer returns an httptest server that responds with the given JSON
+// body on path. Any other path 404s. Used by tests that drive `nbcli show ...`
+// end-to-end without needing a full mux per resource.
+func newJSONServer(t *testing.T, path, body string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != path {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
 }
 
 func TestRootCmd_HasExpectedChildren(t *testing.T) {
@@ -49,7 +66,11 @@ func TestExecute_Help(t *testing.T) {
 	code := cmd.Execute([]string{"--help"}, io)
 	require.Equal(t, 0, code)
 	s := out.String()
-	for _, fragment := range []string{"show", "tui", "plugin", "version", "--format"} {
+	// Root help advertises subcommands + the persistent session flags. Per-call
+	// presentation modifiers (format, columns, pager) are positional on each
+	// show/search command, so they show up under those commands' help — not
+	// here.
+	for _, fragment := range []string{"show", "tui", "plugin", "version", "--url", "--verbose"} {
 		assert.Containsf(t, s, fragment, "help should mention %q", fragment)
 	}
 }
@@ -85,6 +106,56 @@ func TestExecute_ShowSites_RequiresToken(t *testing.T) {
 	code := cmd.Execute([]string{"show", "sites"}, io)
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, errb.String(), "no token found")
+}
+
+// --- Positional presentation overrides (format / columns) -----------------
+
+func TestExecute_FormatPositionalOverridesConfig(t *testing.T) {
+	// no t.Parallel() — isolateEnv uses t.Setenv which forbids parallel.
+	isolateEnv(t)
+	srv := newJSONServer(t, "/api/dcim/sites/", `{"count":1,"results":[{"id":1,"name":"hq","slug":"hq","status":{"value":"active","label":"Active"}}]}`)
+	defer srv.Close()
+	t.Setenv("NBCLI_URL", srv.URL)
+	t.Setenv("NBCLI_TOKEN", "nbt_a.b")
+	t.Setenv("NBCLI_FORMAT", "table") // env says table
+
+	io, out, errb := makeIO()
+	code := cmd.Execute([]string{"show", "sites", "format", "json"}, io) // positional says json
+	require.Equalf(t, 0, code, "stderr=%s", errb.String())
+	body := out.String()
+	assert.Truef(t, strings.HasPrefix(strings.TrimSpace(body), "["),
+		"positional `format json` should yield JSON output, got: %q", body)
+}
+
+func TestExecute_ColumnsPositionalRestrictsHeaders(t *testing.T) {
+	// no t.Parallel() — isolateEnv uses t.Setenv which forbids parallel.
+	isolateEnv(t)
+	srv := newJSONServer(t, "/api/dcim/sites/", `{"count":1,"results":[{"id":1,"name":"hq","slug":"hq","status":{"value":"active","label":"Active"}}]}`)
+	defer srv.Close()
+	t.Setenv("NBCLI_URL", srv.URL)
+	t.Setenv("NBCLI_TOKEN", "nbt_a.b")
+	t.Setenv("NBCLI_FORMAT", "table")
+
+	io, out, errb := makeIO()
+	code := cmd.Execute([]string{"show", "sites", "columns", "id,name"}, io)
+	require.Equalf(t, 0, code, "stderr=%s", errb.String())
+	body := out.String()
+	assert.Contains(t, body, "ID")
+	assert.Contains(t, body, "NAME")
+	// Status was a default column; excluding via `columns id,name` should drop it.
+	assert.NotContains(t, body, "STATUS",
+		"explicit `columns id,name` should suppress default columns")
+}
+
+func TestExecute_FormatPositionalRejectsBadValue(t *testing.T) {
+	t.Parallel()
+	io, _, errb := makeIO()
+	code := cmd.Execute([]string{"show", "sites", "format", "xml"}, io)
+	require.NotEqual(t, 0, code)
+	// Error comes from output.Parse since "xml" isn't a known format.
+	// (Validator allowed it through — Values is a completion hint, not a
+	// hard whitelist.)
+	assert.Contains(t, errb.String(), "format")
 }
 
 func TestExecute_ShowTenants_BadKeyword(t *testing.T) {

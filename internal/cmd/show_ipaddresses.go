@@ -21,7 +21,7 @@ var ipAddressKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "tenant", Description: "tenant slug"},
 	{Name: "device", Description: "assigned device name"},
 	{Name: "vm", Description: "assigned VM name"},
-}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
+}, cmdutils.TrailingKeywords()...)
 
 func newShowIPAddressesCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -57,7 +57,7 @@ func newShowIPAddressesCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cols := resolveColumns(cmd, "ip-addresses")
+			cols := resolveColumns(cmd, "ip-addresses", kv)
 
 			if kv["pager"] == "true" {
 				return runPager(io, "IP Addresses", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
@@ -74,13 +74,13 @@ func newShowIPAddressesCmd(io IO) *cobra.Command {
 
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
-				return renderStreaming[netbox.IPAddress](cmd, io, client.IPAddressesFetcher(opts), iterOpts, cols)
+				return renderStreaming[netbox.IPAddress](cmd, io, client.IPAddressesFetcher(opts), iterOpts, cols, kv)
 			}
 			page, err := client.ListIPAddresses(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
-			return renderRows(cmd, io, page.Results, cols)
+			return renderRows(cmd, io, page.Results, cols, kv)
 		},
 	}
 }

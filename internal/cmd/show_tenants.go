@@ -15,7 +15,7 @@ var tenantKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "name", Description: "exact tenant name"},
 	{Name: "slug", Description: "tenant slug"},
 	{Name: "group", Description: "tenant group slug"},
-}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
+}, cmdutils.TrailingKeywords()...)
 
 func newShowTenantsCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -48,7 +48,7 @@ func newShowTenantsCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := resolveColumns(cmd, "tenants")
+			cols := resolveColumns(cmd, "tenants", kv)
 
 			if kv["pager"] == "true" {
 				return runPager(io, "Tenants", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
@@ -65,13 +65,13 @@ func newShowTenantsCmd(io IO) *cobra.Command {
 
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
-				return renderStreaming[netbox.Tenant](cmd, io, client.TenantsFetcher(opts), iterOpts, cols)
+				return renderStreaming[netbox.Tenant](cmd, io, client.TenantsFetcher(opts), iterOpts, cols, kv)
 			}
 			page, err := client.ListTenants(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
-			return renderRows(cmd, io, page.Results, cols)
+			return renderRows(cmd, io, page.Results, cols, kv)
 		},
 	}
 }

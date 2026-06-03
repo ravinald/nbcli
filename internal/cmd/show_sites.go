@@ -11,8 +11,9 @@ import (
 )
 
 // siteKeywords is the positional keyword set for `nbcli show sites`.
-// Filters interact with the Netbox API → positional. Operational concerns
-// (--format, --url, ...) stay as flags on root.
+// Filters interact with the Netbox API → positional. Presentation
+// (format, columns, pager) is also positional via TrailingKeywords. Flags
+// stay reserved for session/connection setup (--url, --config, ...).
 var siteKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "name", Description: "exact site name"},
 	{Name: "slug", Description: "site slug"},
@@ -20,7 +21,7 @@ var siteKeywords = append([]cmdutils.KeywordSpec{
 		Values: []string{"active", "planned", "staging", "decommissioning", "retired"}},
 	{Name: "region", Description: "region slug"},
 	{Name: "tenant", Description: "tenant slug"},
-}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
+}, cmdutils.TrailingKeywords()...)
 
 // newShowSitesCmd is the reference command shape. Every show subcommand
 // follows the same flow: parse positional keywords → typed Options → either
@@ -35,7 +36,7 @@ func newShowSitesCmd(io IO) *cobra.Command {
 			"  nbcli show sites\n" +
 			"  nbcli show sites status active\n" +
 			"  nbcli show sites region us-west status active limit 100\n" +
-			"  nbcli show sites limit 0 --format json   # streams full inventory\n",
+			"  nbcli show sites limit 0 format json     # stream full inventory\n",
 		Args:              cmdutils.Validator(siteKeywords),
 		ValidArgsFunction: cmdutils.CompletionFunc(siteKeywords),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -57,7 +58,7 @@ func newShowSitesCmd(io IO) *cobra.Command {
 				return err
 			}
 
-			cols := resolveColumns(cmd, "sites")
+			cols := resolveColumns(cmd, "sites", kv)
 
 			if kv["pager"] == "true" {
 				return runPager(io, "Sites", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
@@ -74,13 +75,13 @@ func newShowSitesCmd(io IO) *cobra.Command {
 
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
-				return renderStreaming[netbox.Site](cmd, io, client.SitesFetcher(opts), iterOpts, cols)
+				return renderStreaming[netbox.Site](cmd, io, client.SitesFetcher(opts), iterOpts, cols, kv)
 			}
 			page, err := client.ListSites(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
-			return renderRows(cmd, io, page.Results, cols)
+			return renderRows(cmd, io, page.Results, cols, kv)
 		},
 	}
 }

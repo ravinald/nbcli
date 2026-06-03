@@ -18,7 +18,7 @@ var vmKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "cluster", Description: "cluster name"},
 	{Name: "tenant", Description: "tenant slug"},
 	{Name: "role", Description: "VM role slug"},
-}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
+}, cmdutils.TrailingKeywords()...)
 
 func newShowVMsCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -51,7 +51,7 @@ func newShowVMsCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cols := resolveColumns(cmd, "virtual-machines")
+			cols := resolveColumns(cmd, "virtual-machines", kv)
 
 			if kv["pager"] == "true" {
 				return runPager(io, "Virtual Machines", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
@@ -68,13 +68,13 @@ func newShowVMsCmd(io IO) *cobra.Command {
 
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
-				return renderStreaming[netbox.VirtualMachine](cmd, io, client.VMsFetcher(opts), iterOpts, cols)
+				return renderStreaming[netbox.VirtualMachine](cmd, io, client.VMsFetcher(opts), iterOpts, cols, kv)
 			}
 			page, err := client.ListVMs(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
-			return renderRows(cmd, io, page.Results, cols)
+			return renderRows(cmd, io, page.Results, cols, kv)
 		},
 	}
 }

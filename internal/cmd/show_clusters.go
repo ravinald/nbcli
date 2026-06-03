@@ -17,7 +17,7 @@ var clusterKeywords = append([]cmdutils.KeywordSpec{
 	{Name: "site", Description: "site slug"},
 	{Name: "status", Description: "status value",
 		Values: []string{"active", "planned", "staging", "decommissioning", "offline"}},
-}, append(cmdutils.PaginationKeywords(), cmdutils.PagerKeyword())...)
+}, cmdutils.TrailingKeywords()...)
 
 func newShowClustersCmd(io IO) *cobra.Command {
 	return &cobra.Command{
@@ -48,7 +48,7 @@ func newShowClustersCmd(io IO) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cols := resolveColumns(cmd, "clusters")
+			cols := resolveColumns(cmd, "clusters", kv)
 
 			if kv["pager"] == "true" {
 				return runPager(io, "Clusters", cols, func(ctx context.Context, po pager.FetchOpts) (pager.FetchResult, error) {
@@ -65,13 +65,13 @@ func newShowClustersCmd(io IO) *cobra.Command {
 
 			iterOpts := netbox.IterateOptions{PageSize: 100, MaxPages: 200}
 			if fetchAll {
-				return renderStreaming[netbox.Cluster](cmd, io, client.ClustersFetcher(opts), iterOpts, cols)
+				return renderStreaming[netbox.Cluster](cmd, io, client.ClustersFetcher(opts), iterOpts, cols, kv)
 			}
 			page, err := client.ListClusters(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
-			return renderRows(cmd, io, page.Results, cols)
+			return renderRows(cmd, io, page.Results, cols, kv)
 		},
 	}
 }
