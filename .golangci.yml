@@ -1,0 +1,65 @@
+# golangci-lint v2 config for nbcli.
+# Keep the linter set tight: we want signal, not noise.
+
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - gosec
+    - misspell
+    - revive
+    - unconvert
+    - unparam
+    - nakedret
+    - prealloc
+    - copyloopvar
+    - errorlint
+    - nilerr
+    - perfsprint
+
+  settings:
+    gosec:
+      # G402: TLS InsecureSkipVerify — we expose this as an opt-in flag with a
+      # warning. The call site is annotated with //nolint:gosec.
+      excludes: []
+    revive:
+      severity: warning
+      rules:
+        - name: var-naming
+        - name: package-comments
+        - name: exported
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: increment-decrement
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: unused-parameter
+          disabled: true
+        - name: var-declaration
+
+issues:
+  max-same-issues: 0
+  max-issues-per-linter: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/ravinald/nbcli
